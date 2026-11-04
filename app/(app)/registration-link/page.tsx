@@ -4,10 +4,12 @@ import { useMutation, useQuery } from "@apollo/client/react";
 import { Box, Button, Card, Field, Flex, Heading, Link, Skeleton, Stack, Switch, Text, Textarea } from "@chakra-ui/react";
 import NextLink from "next/link";
 import { useState } from "react";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { AdminOnly } from "@/components/AdminOnly";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { PageBanner } from "@/components/PageBanner";
 import { ShareLink } from "@/components/ShareLink";
+import { toaster } from "@/components/Toaster";
 import { readApiError } from "@/lib/errors";
 import { GREETING } from "@/lib/greeting";
 import { formatDateTime } from "@/lib/dates";
@@ -81,18 +83,37 @@ function LinkSections({ hasLink, noTerms }: { hasLink: boolean; noTerms: boolean
   const awaiting = counts.data?.participantCounts.awaitingReview ?? 0;
   const { tx } = useI18n();
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>): Promise<boolean> {
     setActionError(null);
     try {
       await action();
+      return true;
     } catch (err) {
       setActionError(readApiError(err).message);
+      return false;
     }
   }
 
-  function onRegenerate() {
-    const ok = window.confirm(tx("Create a new link? The current link stops working immediately; you will need to share the new one."));
-    if (ok) void run(() => regenerate());
+  async function onCreate() {
+    if (await run(() => regenerate())) {
+      toaster.create({ type: "success", title: tx("Link created"), description: tx("Share it with the participants.") });
+    }
+  }
+
+  async function onRegenerate() {
+    const ok = await confirmDialog({
+      title: tx("Create a new link"),
+      message: tx("Create a new link? The current link stops working immediately; you will need to share the new one."),
+      confirmLabel: tx("Create a new link"),
+      destructive: true,
+    });
+    if (ok && (await run(() => regenerate()))) {
+      toaster.create({
+        type: "success",
+        title: tx("New link created"),
+        description: tx("The old link no longer works. Share the new one."),
+      });
+    }
   }
 
   const hint = noTerms ? (
@@ -127,7 +148,7 @@ function LinkSections({ hasLink, noTerms }: { hasLink: boolean; noTerms: boolean
               {tx("Create the link, then share it with the participants in their WhatsApp group.")}
             </Text>
             <ErrorAlert message={actionError} />
-            <Button colorPalette="brand" size="lg" loading={regenerateState.loading} onClick={() => run(() => regenerate())}>
+            <Button colorPalette="brand" size="lg" loading={regenerateState.loading} onClick={onCreate}>
               {tx("Create the link")}
             </Button>
             {hint}

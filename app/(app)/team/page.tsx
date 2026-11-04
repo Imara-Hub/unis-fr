@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "@apollo/client/react";
 import { Badge, Box, Button, Card, chakra, Flex, Heading, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { useState, type FormEvent } from "react";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { AdminOnly } from "@/components/AdminOnly";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
@@ -205,7 +206,7 @@ function InvitationsCard() {
   const { tx } = useI18n();
 
   async function onRevoke(id: string) {
-    if (!window.confirm(tx("Cancel this invite link? It stops working immediately."))) return;
+    if (!(await confirmDialog({ message: tx("Cancel this invite link? It stops working immediately."), destructive: true }))) return;
     setError(null);
     try {
       await revoke({ variables: { id } });

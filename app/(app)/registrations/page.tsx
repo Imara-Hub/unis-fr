@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import NextLink from "next/link";
 import { useMemo, useState } from "react";
 import { AdminOnly } from "@/components/AdminOnly";
+import { Delayed } from "@/components/Delayed";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { PageHeader } from "@/components/PageHeader";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
@@ -127,10 +128,13 @@ function Registrations() {
         <ErrorAlert message={list.error ? readApiError(list.error).message : null} />
 
         {!loaded ? (
-          <Stack p="4" gap="3">
-            {[0, 1, 2].map((i) => (
-              <Skeleton key={i} h="16" rounded="md" />
-            ))}
+          // Same height as the placeholders, which only show if the list is slow to come.
+          <Stack p="4" gap="3" minH="248px">
+            <Delayed>
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} h="16" rounded="md" />
+              ))}
+            </Delayed>
           </Stack>
         ) : shown.length === 0 ? (
           <Text p="8" textAlign="center" color="fg.muted">
@@ -143,7 +147,7 @@ function Registrations() {
                   : tx("No registration was approved yet.")}
           </Text>
         ) : (
-          <Stack gap="0">
+          <Stack gap="0" key={review} animation="fade-in 0.3s ease-out" _motionReduce={{ animation: "none" }}>
             {shown.map((p) => (
               <RegistrationRow key={p.id} participant={p} />
             ))}

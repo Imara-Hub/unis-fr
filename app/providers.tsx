@@ -3,6 +3,8 @@
 import { ApolloProvider } from "@apollo/client/react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { useState, type ReactNode } from "react";
+import { ConfirmDialogHost } from "@/components/ConfirmDialog";
+import { Toaster } from "@/components/Toaster";
 import { createApolloClient } from "@/lib/apollo";
 import { LanguageProvider } from "@/lib/i18n";
 import { system } from "@/lib/theme";
@@ -16,8 +18,12 @@ export function Providers({ children }: { children: ReactNode }) {
     <EmotionRegistry>
       <ChakraProvider value={system}>
         <ApolloProvider client={client}>
-          <LanguageProvider>{children}</LanguageProvider>
+          <LanguageProvider>
+            {children}
+            <ConfirmDialogHost />
+          </LanguageProvider>
         </ApolloProvider>
+        <Toaster />
       </ChakraProvider>
     </EmotionRegistry>
   );

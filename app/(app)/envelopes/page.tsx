@@ -4,12 +4,14 @@ import { useMutation, useQuery } from "@apollo/client/react";
 import { Alert, Badge, Box, Button, Card, Circle, Flex, Heading, IconButton, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { Copy, ExternalLink, Lock, Mail, MailOpen, MonitorSmartphone, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { RoleOnly } from "@/components/AdminOnly";
 import { CopyButton } from "@/components/CopyButton";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
 import { PageBanner } from "@/components/PageBanner";
 import { isLocalLink } from "@/components/ShareLink";
+import { toaster } from "@/components/Toaster";
 import { readApiError } from "@/lib/errors";
 import { ME } from "@/lib/graphql/auth";
 import {
@@ -94,12 +96,17 @@ function StageScreenCard() {
   const link = data?.stageScreenLink ?? null;
 
   async function onCreate() {
-    if (link && !window.confirm(tx("Create a new stage screen link? The tablet holding the current link stops working at once; open the new link on it."))) {
+    if (link && !(await confirmDialog({ title: tx("Create a new link"), message: tx("Create a new stage screen link? The tablet holding the current link stops working at once; open the new link on it."), confirmLabel: tx("Create a new link"), destructive: true }))) {
       return;
     }
     setError(null);
     try {
       await regenerate();
+      toaster.create(
+        link
+          ? { type: "success", title: tx("New link created"), description: tx("The old link no longer works. Open the new one on the stage tablet.") }
+          : { type: "success", title: tx("Link created"), description: tx("Open it on the stage tablet.") },
+      );
     } catch (err) {
       setError(readApiError(err).message);
     }
@@ -275,7 +282,7 @@ function EnvelopeCard({ envelope: e, canEdit, onEdit }: { envelope: Envelope; ca
   const { tx } = useI18n();
 
   async function onDelete() {
-    if (!window.confirm(tx("Delete envelope {n}?", { n: e.number }))) return;
+    if (!(await confirmDialog({ message: tx("Delete envelope {n}?", { n: e.number }), confirmLabel: tx("Delete"), destructive: true }))) return;
     try {
       await remove({ variables: { id: e.id } });
     } catch (err) {

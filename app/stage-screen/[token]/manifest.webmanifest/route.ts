@@ -5,8 +5,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   const { token } = await params;
   const start = `/stage-screen/${encodeURIComponent(token)}`;
   const manifest = {
-    name: "Musabaqa · Stage screen",
-    short_name: "Musabaqa",
+    name: "Stage · Musabaqa",
+    short_name: "Stage",
     description: "The stage screen where participants choose their envelope.",
     id: start,
     start_url: start,

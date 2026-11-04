@@ -22,6 +22,7 @@ import {
 import { ArrowLeft, BookOpen, CircleCheck, Mail, MonitorSmartphone, Minus, Search, TriangleAlert, Undo2, UserRoundCheck } from "lucide-react";
 import NextLink from "next/link";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { NAVY_GRADIENT, ParticipantInfo, RulesCard } from "@/components/JudgingParts";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
@@ -340,7 +341,7 @@ function DrawCard({ participant: p }: { participant: StageParticipant }) {
   const envelopes = slots.data?.envelopeSlots ?? [];
 
   async function sendBack() {
-    if (!window.confirm(tx("Send {name} back to the waiting list?", { name: p.fullName }))) return;
+    if (!(await confirmDialog({ message: tx("Send {name} back to the waiting list?", { name: p.fullName }) }))) return;
     setError(null);
     try {
       await call({ variables: { participantId: null } });
@@ -350,7 +351,7 @@ function DrawCard({ participant: p }: { participant: StageParticipant }) {
   }
 
   async function pick(id: string) {
-    if (!window.confirm(tx("{name}, open this envelope?", { name: p.fullName }))) return;
+    if (!(await confirmDialog({ message: tx("{name}, open this envelope?", { name: p.fullName }), confirmLabel: tx("Open this envelope") }))) return;
     setError(null);
     try {
       await draw({ variables: { envelopeId: id } });
@@ -475,7 +476,7 @@ function FinishBar({ participant: p, judgeCount, next }: { participant: StagePar
   const done = p.sheetsSubmitted >= judgeCount;
 
   async function onNext() {
-    if (!done && !window.confirm(tx("Only {n} of {total} judges have submitted. Finish the turn of {name} anyway?", { n: p.sheetsSubmitted, total: judgeCount, name: p.fullName }))) return;
+    if (!done && !(await confirmDialog({ message: tx("Only {n} of {total} judges have submitted. Finish the turn of {name} anyway?", { n: p.sheetsSubmitted, total: judgeCount, name: p.fullName }) }))) return;
     setError(null);
     try {
       await call({ variables: { participantId: next?.id ?? null } });
@@ -790,8 +791,8 @@ function Sheet({ participant, rules }: { participant: StageParticipant; rules: S
             _hover={{ bg: "gold.300" }}
             disabled={sauti === null}
             loading={loading}
-            onClick={() => {
-              if (window.confirm(tx("Submit your sheet for {name}: {total} / 100?", { name: participant.fullName, total: total ?? "—" }))) void send(true);
+            onClick={async () => {
+              if (await confirmDialog({ message: tx("Submit your sheet for {name}: {total} / 100?", { name: participant.fullName, total: total ?? "—" }), confirmLabel: tx("Submit my sheet") })) void send(true);
             }}
           >
             {sauti === null ? tx("Give the sauti first") : tx("Submit my sheet")}

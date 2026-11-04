@@ -3,9 +3,10 @@
 import { Box, Center, Flex, Grid, Heading, Stack, Text } from "@chakra-ui/react";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/brand/Logo";
+import { LOADING_DELAY_MS } from "@/components/Delayed";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useI18n } from "@/lib/i18n";
-import { StarLattice } from "@/components/brand/Octagram";
+import { Octagram, StarLattice } from "@/components/brand/Octagram";
 
 type AuthCardProps = {
   eyebrow?: string;
@@ -44,6 +45,9 @@ function Plain({ wide = false, ...props }: Omit<AuthCardProps, "panel">) {
         pt={{ base: "7", md: "9" }}
         pb="6"
         mt={{ md: "4", xl: "6" }}
+        // Comes in softly after the loading screen instead of popping in.
+        animation="fade-in 0.4s ease-out, slide-from-bottom 0.4s ease-out"
+        _motionReduce={{ animation: "none" }}
       >
         <Content {...props} />
         <Copyright pt="8" />
@@ -66,6 +70,8 @@ function WithPanel(props: Omit<AuthCardProps, "panel">) {
         borderWidth={{ base: "0", md: "1px" }}
         p={{ base: "0", md: "3.5" }}
         gap={{ base: "0", lg: "3.5" }}
+        animation="fade-in 0.4s ease-out, slide-from-bottom 0.4s ease-out"
+        _motionReduce={{ animation: "none" }}
       >
         <IlluminatedPanel />
 
@@ -233,12 +239,38 @@ function IlluminatedPanel() {
   );
 }
 
+// The loading screen: the logo, breathing, inside a slowly turning gold star (۞).
+// "Loading…" only fades in if loading takes a while, so fast loads stay calm.
 export function FullPageSpinner() {
+  const { tx } = useI18n();
   return (
-    <Center minH="100dvh" aria-label="Loading">
-      <Box animation="pulse 1.6s ease-in-out infinite" _motionReduce={{ animation: "none" }}>
-        <Logo size={72} priority />
-      </Box>
+    <Center minH="100dvh" flexDirection="column" gap="5" role="status" aria-busy aria-label={tx("Loading…")}>
+      <Center position="relative" boxSize="32" animation="scale-in 0.35s ease-out" _motionReduce={{ animation: "none" }}>
+        <Box
+          position="absolute"
+          inset="0"
+          color="gold.400"
+          opacity={0.55}
+          animation="spin 12s linear infinite"
+          _motionReduce={{ animation: "none" }}
+        >
+          <Octagram size="100%" strokeWidth={0.6} />
+        </Box>
+        <Box animation="pulse 1.6s ease-in-out infinite" _motionReduce={{ animation: "none" }}>
+          <Logo size={72} priority />
+        </Box>
+      </Center>
+      <Text
+        fontSize="sm"
+        fontWeight="medium"
+        letterSpacing="0.08em"
+        color="fg.muted"
+        animation="fade-in 0.4s ease-out both"
+        animationDelay={`${LOADING_DELAY_MS}ms`}
+        _motionReduce={{ animation: "none" }}
+      >
+        {tx("Loading…")}
+      </Text>
     </Center>
   );
 }

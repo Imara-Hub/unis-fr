@@ -332,7 +332,10 @@ export function DashboardShell({
         </Drawer.Root>
 
         <Box as="main" flex="1" minW="0" px={{ base: "4", md: "8" }} py={{ base: "5", md: "7" }} maxW="7xl" w="full">
-          {children}
+          {/* Each page fades in when opened (the key restarts the animation on navigation). */}
+          <Box key={pathname} animation="fade-in 0.3s ease-out" _motionReduce={{ animation: "none" }}>
+            {children}
+          </Box>
         </Box>
       </Flex>
     </Flex>

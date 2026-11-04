@@ -20,6 +20,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
 import { ROLE_STYLE, RoleBadge } from "@/components/RoleBadge";
@@ -54,7 +55,7 @@ export function TeamMembers({ showAdmin = false, framed = false, empty }: { show
   const groups: Role[] = showAdmin ? ["JUDGE", "STAFF", "ADMIN"] : ["JUDGE", "STAFF"];
 
   async function toggleActive(u: TeamMember) {
-    if (u.isActive && !window.confirm(tx("Deactivate {name}? They are logged out at once and cannot log in until reactivated.", { name: u.name }))) {
+    if (u.isActive && !(await confirmDialog({ message: tx("Deactivate {name}? They are logged out at once and cannot log in until reactivated.", { name: u.name }), destructive: true }))) {
       return;
     }
     setActionError(null);

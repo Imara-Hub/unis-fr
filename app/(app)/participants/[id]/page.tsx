@@ -5,6 +5,7 @@ import { Badge, Button, Card, DataList, Field, Flex, Heading, Image, Link, Simpl
 import NextLink from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { ScoreScale } from "@/components/ScoreScale";
@@ -480,11 +481,13 @@ function DeleteCard({ participant }: { participant: ParticipantDetail }) {
   const { tx } = useI18n();
 
   async function onDelete() {
-    const ok = window.confirm(
-      tx("Delete the registration of {name}? The photo, judges’ sheets and history are deleted too. Their phone number can then register again.", {
+    const ok = await confirmDialog({
+      destructive: true,
+      confirmLabel: tx("Delete"),
+      message: tx("Delete the registration of {name}? The photo, judges’ sheets and history are deleted too. Their phone number can then register again.", {
         name: participant.fullName,
       }),
-    );
+    });
     if (!ok) return;
     try {
       await remove({ variables: { id: participant.id } });

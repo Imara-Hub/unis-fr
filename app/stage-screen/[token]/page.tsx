@@ -34,7 +34,6 @@ import {
   type StageScreenView,
 } from "@/lib/graphql/judging";
 import { useI18n } from "@/lib/i18n";
-import { HoldToUnlock, LockOverlay, useScreenLock } from "./lock";
 
 // The stage screen: a tablet on stage, opened with the secret link the admin creates.
 // The participant who was called picks a closed envelope here. This screen never receives any
@@ -55,7 +54,7 @@ function StageScreen() {
   });
   useStageScreenLive(token, () => void refetch());
   const { tx } = useI18n();
-  const lock = useScreenLock();
+  useKeepAwake();
   const view = data?.stageScreen;
 
   return (
@@ -80,17 +79,6 @@ function StageScreen() {
       ps="env(safe-area-inset-left)"
       pe="env(safe-area-inset-right)"
     >
-      {(!lock.locked || lock.needsFullscreen) && (
-        <LockOverlay
-          mode={lock.locked ? "resume" : "start"}
-          fullscreenSupported={lock.fullscreenSupported}
-          installed={lock.installed}
-          onStart={
-            lock.locked ? () => void lock.resume() : () => void lock.start()
-          }
-          languagePicker={<LanguageSwitcher />}
-        />
-      )}
       <Box position="absolute" inset="0" aria-hidden pointerEvents="none">
         <StarLattice color="#C99A35" opacity={0.16} tile={72} />
         <Box
@@ -108,36 +96,33 @@ function StageScreen() {
         py={{ base: "3", md: "5" }}
         flexShrink={0}
       >
-        <HoldToUnlock enabled={lock.locked} onUnlock={() => void lock.unlock()}>
-          <Flex align="center" gap="3">
-            <Logo size={44} priority />
-            <Box lineHeight="1.1">
-              <Text fontFamily="display" fontSize="lg" letterSpacing="0.16em">
-                UNIS
+        <Flex align="center" gap="3">
+          <Logo size={44} priority />
+          <Box lineHeight="1.1">
+            <Text fontFamily="display" fontSize="lg" letterSpacing="0.16em">
+              UNIS
+            </Text>
+            <Flex align="baseline" gap="1.5" fontSize="xs" color="gold.300">
+              <Text
+                as="span"
+                letterSpacing="0.12em"
+                textTransform="uppercase"
+              >
+                Musabaqa
               </Text>
-              <Flex align="baseline" gap="1.5" fontSize="xs" color="gold.300">
-                <Text
-                  as="span"
-                  letterSpacing="0.12em"
-                  textTransform="uppercase"
-                >
-                  Musabaqa
-                </Text>
-                <Text
-                  as="span"
-                  lang="ar"
-                  dir="rtl"
-                  fontFamily="arabic"
-                  fontSize="sm"
-                >
-                  مسابقة
-                </Text>
-              </Flex>
-            </Box>
-          </Flex>
-        </HoldToUnlock>
-        {/* The language is chosen before starting; locked, the participant cannot change it. */}
-        {!lock.locked && <LanguageSwitcher />}
+              <Text
+                as="span"
+                lang="ar"
+                dir="rtl"
+                fontFamily="arabic"
+                fontSize="sm"
+              >
+                مسابقة
+              </Text>
+            </Flex>
+          </Box>
+        </Flex>
+        <LanguageSwitcher />
       </Flex>
 
       <Flex
@@ -406,6 +391,27 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
       </Flex>
     </Stack>
   );
+}
+
+// The tablet stays on during the competition (where the browser allows it).
+function useKeepAwake() {
+  useEffect(() => {
+    let wakeLock: WakeLockSentinel | null = null;
+    const keepAwake = async () => {
+      if (document.visibilityState !== "visible" || !("wakeLock" in navigator)) return;
+      try {
+        wakeLock = await navigator.wakeLock.request("screen");
+      } catch {
+        // Not allowed (battery saver, old browser): the tablet's own sleep setting applies.
+      }
+    };
+    void keepAwake();
+    document.addEventListener("visibilitychange", keepAwake);
+    return () => {
+      document.removeEventListener("visibilitychange", keepAwake);
+      void wakeLock?.release();
+    };
+  }, []);
 }
 
 // Live updates for the stage screen (Server-Sent Events), authorised by the secret link only.

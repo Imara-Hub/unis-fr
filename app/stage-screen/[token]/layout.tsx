@@ -15,10 +15,12 @@ export const viewport: Viewport = {
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params;
   return {
-    title: "Stage screen",
+    // "Stage · Musabaqa" in the tab, link previews and under the home screen icon.
+    title: "Stage",
+    openGraph: { title: "Stage · Musabaqa", siteName: "Musabaqa" },
     // Its own install file: the home screen icon opens this exact stage screen, full screen.
     manifest: `/stage-screen/${encodeURIComponent(token)}/manifest.webmanifest`,
-    appleWebApp: { capable: true, title: "Musabaqa", statusBarStyle: "black-translucent" },
+    appleWebApp: { capable: true, title: "Stage · Musabaqa", statusBarStyle: "black-translucent" },
     robots: { index: false, follow: false },
   };
 }
