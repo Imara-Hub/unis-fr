@@ -132,9 +132,14 @@ export function RulesCard({ rules: r }: { rules: ScoringRules }) {
           <Text>• {tx("Each question is worth {n} points. Every mistake counts.", { n: r.questionPoints })}</Text>
           <Text>• {tx("Reminder number {n} (●) deletes the question: it gets 0 and you move on to the next one.", { n: r.fathLimit })}</Text>
           <Text>
-            • {tx("The {n} questions count for {weight}, the voice (sauti) for {sauti}: total 100.", {
+            • {tx("{n} questions of {points} points, plus {presence} for being present: total 100.", {
               n: r.questions,
-              weight: r.questionsWeight,
+              points: r.questionPoints,
+              presence: r.presencePoints,
+            })}
+          </Text>
+          <Text>
+            • {tx("The voice (sauti, out of {sauti}) is inside the questions: a third in each. A deleted question loses its third too.", {
               sauti: r.sautiMax,
             })}
           </Text>

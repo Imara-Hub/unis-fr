@@ -17,7 +17,7 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { Camera, Check, CircleCheck, IdCard, RefreshCw } from "lucide-react";
+import { Camera, Check, CircleCheck, IdCard, RefreshCw, UserPlus } from "lucide-react";
 import NextImage from "next/image";
 import { useParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -26,7 +26,15 @@ import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
 import { readApiError } from "@/lib/errors";
 import { useI18n } from "@/lib/i18n";
-import { REGISTRATION_LINK_STATUS, type Gender } from "@/lib/graphql/participants";
+import {
+  GUARDIAN_RELATIONS,
+  REGISTRAR_INSTITUTION_TYPES,
+  REGISTRATION_LINK_STATUS,
+  type Gender,
+  type GuardianRelation,
+  type RegisteredBy,
+  type RegistrarInstitutionType,
+} from "@/lib/graphql/participants";
 import {
   MAX_AGE,
   PASSPORT_RATIO,
@@ -37,7 +45,16 @@ import {
   type RegistrationInput,
 } from "@/lib/register";
 
-type FormState = Omit<RegistrationInput, "gender"> & { gender: Gender | "" };
+// The registrar's details are flat fields here, sent as `contact` (see toInput).
+type FormState = Omit<RegistrationInput, "gender" | "registeredBy" | "contact"> & {
+  gender: Gender | "";
+  registeredBy: RegisteredBy | "";
+  contactName: string;
+  contactPhone: string;
+  contactRelation: GuardianRelation | "";
+  contactInstitutionType: RegistrarInstitutionType | "";
+  contactInstitutionName: string;
+};
 
 // ID card size (ISO ID-1, 85.6 x 54 mm): the shape of the ID document drop zone.
 const ID_CARD_RATIO = 85.6 / 54;
@@ -52,14 +69,67 @@ const EMPTY: FormState = {
   province: "",
   commune: "",
   institution: "",
+  institutionLocation: "",
+  registeredBy: "",
+  contactName: "",
+  contactPhone: "",
+  contactRelation: "",
+  contactInstitutionType: "",
+  contactInstitutionName: "",
 };
 
-// Fields that may stay empty.
-const OPTIONAL: (keyof FormState)[] = ["middleName"];
+// What must be filled in depends on who fills in the form.
+function requiredFields(f: FormState): (keyof FormState)[] {
+  const always: (keyof FormState)[] = ["registeredBy", "firstName", "lastName", "dateOfBirth", "gender", "province", "commune", "institution", "institutionLocation"];
+  if (f.registeredBy === "SELF") return [...always, "phone"];
+  if (f.registeredBy === "GUARDIAN") return [...always, "contactName", "contactPhone", "contactRelation"];
+  if (f.registeredBy === "INSTITUTION") {
+    return [...always, "contactInstitutionType", "contactInstitutionName", "contactName", "contactPhone"];
+  }
+  return always;
+}
+
+function toInput(f: FormState): RegistrationInput {
+  const { contactName, contactPhone, contactRelation, contactInstitutionType, contactInstitutionName, ...rest } = f;
+  const registeredBy = f.registeredBy || "SELF";
+  return {
+    ...rest,
+    phone: registeredBy === "SELF" ? f.phone : "",
+    gender: f.gender as Gender,
+    registeredBy,
+    contact:
+      registeredBy === "SELF"
+        ? null
+        : {
+            name: contactName,
+            phone: contactPhone,
+            relation: registeredBy === "GUARDIAN" ? contactRelation || null : null,
+            institutionType: registeredBy === "INSTITUTION" ? contactInstitutionType || null : null,
+            institutionName: registeredBy === "INSTITUTION" ? contactInstitutionName.trim() || null : null,
+          },
+  };
+}
+
+// The server's field names for the registrar ("contact.name") → this form's fields.
+const CONTACT_FIELDS: Record<string, keyof FormState> = {
+  "contact.name": "contactName",
+  "contact.phone": "contactPhone",
+  "contact.relation": "contactRelation",
+  "contact.institutionType": "contactInstitutionType",
+  "contact.institutionName": "contactInstitutionName",
+};
+
+// After a guardian or an institution registers one participant, the next form starts with their
+// details (and the address and halaqa, usually the same), so only the new participant is typed.
+function keptForNext(f: FormState): Partial<FormState> {
+  if (f.registeredBy === "SELF" || !f.registeredBy) return {};
+  const { registeredBy, contactName, contactPhone, contactRelation, contactInstitutionType, contactInstitutionName, province, commune, institution, institutionLocation } = f;
+  return { registeredBy, contactName, contactPhone, contactRelation, contactInstitutionType, contactInstitutionName, province, commune, institution, institutionLocation };
+}
 
 // Error codes that belong to one field, so the message shows under that field.
+// (ALREADY_REGISTERED is about the person, name and date of birth: shown above the form.)
 const FIELD_OF_CODE: Record<string, keyof FormState | "photo" | "idDocument" | "acceptTerms"> = {
-  ALREADY_REGISTERED: "phone",
   TERMS_CHANGED: "acceptTerms",
   INVALID_PHOTO: "photo",
   INVALID_ID_DOCUMENT: "idDocument",
@@ -92,7 +162,10 @@ function Register() {
   const { t, apiError } = useI18n();
   const tr = t.register;
   const status = useQuery(REGISTRATION_LINK_STATUS, { variables: { token }, fetchPolicy: "network-only" });
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState<{ fullName: string; keep: Partial<FormState> } | null>(null);
+  // Details carried over to the next form ("Register another participant"), and a fresh form each time.
+  const [prefill, setPrefill] = useState<Partial<FormState>>({});
+  const [round, setRound] = useState(0);
   const [closed, setClosed] = useState(false);
 
   // Only the first load: a refetch (new terms after TERMS_CHANGED) keeps the form and what was typed.
@@ -121,11 +194,33 @@ function Register() {
     );
   }
   if (done) {
+    const forSomeone = Boolean(done.keep.registeredBy);
     return (
-      <AuthCard title={tr.doneTitle} subtitle={tr.doneThanks(done)} top={banner}>
-        <Stack gap="3">
-          <Text>{tr.doneText}</Text>
-          <Text color="fg.muted">{tr.doneClose}</Text>
+      <AuthCard title={tr.doneTitle} subtitle={forSomeone ? tr.doneOther(done.fullName) : tr.doneThanks(done.fullName)} top={banner}>
+        <Stack gap="4">
+          <Text>{forSomeone ? tr.doneTextOther : tr.doneText}</Text>
+          {forSomeone ? (
+            <Stack gap="2" align="flex-start">
+              <Button
+                colorPalette="brand"
+                size="lg"
+                onClick={() => {
+                  setPrefill(done.keep);
+                  setRound((r) => r + 1);
+                  setDone(null);
+                  window.scrollTo({ top: 0 });
+                }}
+              >
+                <UserPlus size={18} aria-hidden />
+                {tr.registerAnother}
+              </Button>
+              <Text fontSize="sm" color="fg.muted">
+                {tr.registerAnotherHelp}
+              </Text>
+            </Stack>
+          ) : (
+            <Text color="fg.muted">{tr.doneClose}</Text>
+          )}
         </Stack>
       </AuthCard>
     );
@@ -148,9 +243,11 @@ function Register() {
       subtitle={tr.subtitle(MAX_AGE)}
     >
       <RegistrationForm
+        key={round}
         token={token}
         terms={link.terms}
-        onDone={setDone}
+        initial={prefill}
+        onDone={(fullName, keep) => setDone({ fullName, keep })}
         onClosed={() => setClosed(true)}
         onTermsChanged={() => void status.refetch()}
       />
@@ -161,19 +258,21 @@ function Register() {
 function RegistrationForm({
   token,
   terms,
+  initial,
   onDone,
   onClosed,
   onTermsChanged,
 }: {
   token: string;
   terms: { text: string; version: number };
-  onDone: (fullName: string) => void;
+  initial: Partial<FormState>;
+  onDone: (fullName: string, keep: Partial<FormState>) => void;
   onClosed: () => void;
   onTermsChanged: () => void;
 }) {
   const { t, apiError } = useI18n();
   const tr = t.register;
-  const [form, setForm] = useState<FormState>(EMPTY);
+  const [form, setForm] = useState<FormState>({ ...EMPTY, ...initial });
   // The terms version the person ticked "I accept" for. New terms (after TERMS_CHANGED) untick it.
   const [acceptedVersion, setAcceptedVersion] = useState<number | null>(null);
   const accepted = acceptedVersion === terms.version;
@@ -201,6 +300,20 @@ function RegistrationForm({
 
   const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
+  const choose = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setFieldErrors(({ [key]: _, ...rest }) => rest);
+  };
+  // The halaqa is usually the school / masjid / markaz itself: filled in along, until changed.
+  const setInstitutionName = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setForm((f) => ({
+      ...f,
+      contactInstitutionName: value,
+      institution: f.institution === f.contactInstitutionName ? value : f.institution,
+    }));
+  };
+  const by = form.registeredBy;
 
   async function onPhotoChosen(file: File) {
     setFieldErrors(({ photo: _, ...rest }) => rest);
@@ -248,6 +361,19 @@ function RegistrationForm({
     e.preventDefault();
     setError(null);
     setFieldErrors({});
+    if (!form.registeredBy) {
+      setFieldErrors({ registeredBy: tr.errChooseOne });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (form.registeredBy === "GUARDIAN" && !form.contactRelation) {
+      setFieldErrors({ contactRelation: tr.errChooseOne });
+      return;
+    }
+    if (form.registeredBy === "INSTITUTION" && !form.contactInstitutionType) {
+      setFieldErrors({ contactInstitutionType: tr.errChooseOne });
+      return;
+    }
     if (!photo) {
       setFieldErrors({ photo: tr.errAddPhoto });
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -269,7 +395,7 @@ function RegistrationForm({
     setSubmitting(true);
     const result = await registerParticipant(
       token,
-      { ...form, gender: form.gender },
+      toInput(form),
       { acceptTerms: accepted, termsVersion: terms.version },
       photo,
       idDocument,
@@ -277,7 +403,7 @@ function RegistrationForm({
     setSubmitting(false);
 
     if ("fullName" in result) {
-      onDone(result.fullName);
+      onDone(result.fullName, keptForNext(form));
       return;
     }
     const failure = apiError(result);
@@ -292,13 +418,14 @@ function RegistrationForm({
       return;
     }
     const field = result.code ? FIELD_OF_CODE[result.code] : undefined;
-    setFieldErrors(field ? { [field]: failure.message } : failure.fields);
+    const fields = Object.fromEntries(Object.entries(failure.fields).map(([k, v]) => [CONTACT_FIELDS[k] ?? k, v]));
+    setFieldErrors(field ? { [field]: failure.message } : fields);
     setError(field ? null : failure.message);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const missing =
-    (Object.keys(form) as (keyof FormState)[]).some((k) => !OPTIONAL.includes(k) && !form[k]) ||
+    requiredFields(form).some((k) => !form[k]) ||
     !photo ||
     !idDocument ||
     !accepted;
@@ -308,12 +435,79 @@ function RegistrationForm({
       <Stack gap="7">
         <ErrorAlert message={error} />
 
-        {/* 1. The photo first: it is the step people most often get wrong. */}
-        <Section number={1} title={tr.sectionPhoto}>
+        {/* 1. Who fills in the form: the participant, a parent / guardian, or a school / masjid / markaz. */}
+        <Section number={1} title={tr.sectionWho}>
+          <FormField label={tr.whoLabel} error={fieldErrors.registeredBy}>
+            <ChoicePicker
+              label={tr.whoLabel}
+              options={[
+                { value: "SELF" as RegisteredBy, label: tr.whoSelf },
+                { value: "GUARDIAN" as RegisteredBy, label: tr.whoGuardian },
+                { value: "INSTITUTION" as RegisteredBy, label: tr.whoInstitution },
+              ]}
+              columns={{ base: 1, md: 3 }}
+              value={by}
+              invalid={Boolean(fieldErrors.registeredBy)}
+              onChange={(value) => choose("registeredBy", value)}
+            />
+          </FormField>
+
+          {by === "GUARDIAN" && (
+            <Stack gap="4" animation="fade-in 0.25s ease-out" _motionReduce={{ animation: "none" }}>
+              <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4">
+                <FormField label={tr.guardianName} error={fieldErrors.contactName}>
+                  <Input autoComplete="name" value={form.contactName} onChange={set("contactName")} />
+                </FormField>
+                <FormField label={tr.guardianPhone} error={fieldErrors.contactPhone} helper={tr.guardianPhoneHelp}>
+                  <Input type="tel" autoComplete="tel" placeholder="79 123 456" value={form.contactPhone} onChange={set("contactPhone")} />
+                </FormField>
+              </SimpleGrid>
+              <FormField label={tr.relation} error={fieldErrors.contactRelation}>
+                <ChoicePicker
+                  label={tr.relation}
+                  options={GUARDIAN_RELATIONS.map((r) => ({ value: r, label: tr.relations[r] }))}
+                  columns={{ base: 2, md: 4 }}
+                  value={form.contactRelation}
+                  invalid={Boolean(fieldErrors.contactRelation)}
+                  onChange={(value) => choose("contactRelation", value)}
+                />
+              </FormField>
+            </Stack>
+          )}
+
+          {by === "INSTITUTION" && (
+            <Stack gap="4" animation="fade-in 0.25s ease-out" _motionReduce={{ animation: "none" }}>
+              <FormField label={tr.institutionType} error={fieldErrors.contactInstitutionType}>
+                <ChoicePicker
+                  label={tr.institutionType}
+                  options={REGISTRAR_INSTITUTION_TYPES.map((t) => ({ value: t, label: tr.institutionTypes[t] }))}
+                  columns={3}
+                  value={form.contactInstitutionType}
+                  invalid={Boolean(fieldErrors.contactInstitutionType)}
+                  onChange={(value) => choose("contactInstitutionType", value)}
+                />
+              </FormField>
+              <FormField label={tr.institutionName} error={fieldErrors.contactInstitutionName}>
+                <Input autoComplete="organization" value={form.contactInstitutionName} onChange={setInstitutionName} />
+              </FormField>
+              <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4">
+                <FormField label={tr.contactName} error={fieldErrors.contactName}>
+                  <Input autoComplete="name" value={form.contactName} onChange={set("contactName")} />
+                </FormField>
+                <FormField label={tr.contactPhone} error={fieldErrors.contactPhone} helper={tr.contactPhoneHelp}>
+                  <Input type="tel" autoComplete="tel" placeholder="79 123 456" value={form.contactPhone} onChange={set("contactPhone")} />
+                </FormField>
+              </SimpleGrid>
+            </Stack>
+          )}
+        </Section>
+
+        {/* 2. The photo early: it is the step people most often get wrong. */}
+        <Section number={2} title={tr.sectionPhoto}>
           <PhotoPicker preview={preview} preparing={preparing} error={fieldErrors.photo} onFile={onPhotoChosen} />
         </Section>
 
-        <Section number={2} title={tr.sectionAbout}>
+        <Section number={3} title={by && by !== "SELF" ? tr.sectionAboutParticipant : tr.sectionAbout}>
           <SimpleGrid columns={{ base: 1, md: 3 }} gap="4">
             <FormField label={tr.firstName} error={fieldErrors.firstName}>
               <Input autoComplete="given-name" value={form.firstName} onChange={set("firstName")} />
@@ -326,13 +520,12 @@ function RegistrationForm({
             </FormField>
           </SimpleGrid>
           <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4">
-            <FormField
-              label={tr.phone}
-              error={fieldErrors.phone}
-              helper={tr.phoneHelp}
-            >
-              <Input type="tel" autoComplete="tel" placeholder="79 123 456" value={form.phone} onChange={set("phone")} />
-            </FormField>
+            {/* One number per registration: a parent or school gives only theirs, above. */}
+            {(!by || by === "SELF") && (
+              <FormField label={tr.phone} error={fieldErrors.phone} helper={tr.phoneHelp}>
+                <Input type="tel" autoComplete="tel" placeholder="79 123 456" value={form.phone} onChange={set("phone")} />
+              </FormField>
+            )}
             <FormField
               label={tr.dateOfBirth}
               error={fieldErrors.dateOfBirth}
@@ -365,7 +558,7 @@ function RegistrationForm({
           </FormField>
         </Section>
 
-        <Section number={3} title={tr.sectionAddress}>
+        <Section number={4} title={by && by !== "SELF" ? tr.sectionAddressParticipant : tr.sectionAddress}>
           <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4">
             <FormField label={tr.province} error={fieldErrors.province} helper={tr.provinceHelp}>
               <Input list="provinces" autoComplete="address-level1" value={form.province} onChange={set("province")} />
@@ -380,12 +573,17 @@ function RegistrationForm({
               <Input autoComplete="address-level2" value={form.commune} onChange={set("commune")} />
             </FormField>
           </SimpleGrid>
-          <FormField label={tr.halaqa} error={fieldErrors.institution} helper={tr.halaqaHelp}>
-            <Input value={form.institution} onChange={set("institution")} />
-          </FormField>
+          <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4">
+            <FormField label={tr.halaqa} error={fieldErrors.institution} helper={tr.halaqaHelp}>
+              <Input value={form.institution} onChange={set("institution")} />
+            </FormField>
+            <FormField label={tr.halaqaLocation} error={fieldErrors.institutionLocation} helper={tr.halaqaLocationHelp}>
+              <Input value={form.institutionLocation} onChange={set("institutionLocation")} />
+            </FormField>
+          </SimpleGrid>
         </Section>
 
-        <Section number={4} title={tr.sectionId}>
+        <Section number={5} title={tr.sectionId}>
           <IdDocumentPicker
             preview={idPreview}
             preparing={preparingId}
@@ -394,7 +592,7 @@ function RegistrationForm({
           />
         </Section>
 
-        <Section number={5} title={tr.sectionTerms}>
+        <Section number={6} title={tr.sectionTerms}>
           <TermsBox
             text={terms.text}
             accepted={accepted}

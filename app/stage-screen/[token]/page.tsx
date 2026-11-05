@@ -13,7 +13,7 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { Link2Off, Mail, MailOpen, Mic } from "lucide-react";
+import { Link2Off, MailOpen } from "lucide-react";
 import { useParams } from "next/navigation";
 import {
   Suspense,
@@ -26,6 +26,7 @@ import { FullPageSpinner } from "@/components/AuthCard";
 import { Logo } from "@/components/brand/Logo";
 import { StarLattice } from "@/components/brand/Octagram";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { EnvelopeCard } from "@/components/StageEnvelope";
 import { API_URL } from "@/lib/api";
 import { readApiError } from "@/lib/errors";
 import {
@@ -157,13 +158,7 @@ function StageScreen() {
               "Ask the admin to open the new stage screen link on this tablet.",
             )}
           />
-        ) : !view.participant ? (
-          <Message
-            icon={<Mic size={36} aria-hidden />}
-            title={tx("Waiting for the next participant")}
-            text={tx("The judges call the next participant to the stage.")}
-          />
-        ) : view.drawn ? (
+        ) : view.participant && view.drawn ? (
           <Message
             icon={<MailOpen size={40} aria-hidden />}
             gold
@@ -176,7 +171,8 @@ function StageScreen() {
             )}
           />
         ) : (
-          <Draw key={view.participant.id} token={token} view={view} />
+          // The envelopes are always on screen; they can be tapped once a participant is called.
+          <Draw key={view.participant?.id ?? "waiting"} token={token} view={view} />
         )}
       </Flex>
     </Flex>
@@ -230,15 +226,20 @@ function Message({
   );
 }
 
-// The participant taps a closed envelope, then confirms on the same screen.
+// The participant taps a closed envelope, then confirms on the same screen. Before anyone is
+// called, the same envelopes are on screen but cannot be tapped.
 function Draw({ token, view }: { token: string; view: StageScreenView }) {
   const [chosen, setChosen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draw, { loading }] = useMutation(STAGE_SCREEN_DRAW, {
-    refetchQueries: [{ query: STAGE_SCREEN, variables: { token } }],
+    update(cache, { data }) {
+      if (!data) return;
+      cache.writeQuery({ query: STAGE_SCREEN, variables: { token }, data: { stageScreen: data.stageScreenDraw } });
+    },
   });
   const { tx } = useI18n();
-  const name = firstName(view.participant!.fullName);
+  const waiting = !view.participant;
+  const name = view.participant ? firstName(view.participant.fullName) : "";
   // The envelope they had chosen was taken by the judges' backup draw, or deleted.
   const stillThere =
     chosen && view.slots.some((s) => s.id === chosen) ? chosen : null;
@@ -255,28 +256,33 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
   }
 
   return (
-    <Stack align="center" gap={{ base: "6", md: "8" }} w="full" maxW="5xl">
-      <Stack align="center" textAlign="center" gap="2">
-        <Text
-          fontSize="sm"
-          fontWeight="semibold"
-          letterSpacing="0.18em"
-          textTransform="uppercase"
-          color="gold.300"
-        >
-          {tx("On stage")}
-        </Text>
+    <Stack align="center" gap={{ base: "6", md: "8" }} w="full" maxW="6xl">
+      {/* The title, always; the name of who is choosing once a participant is called. */}
+      <Stack align="center" textAlign="center" gap="2" animation="fade-in 0.4s ease-out">
+        {!waiting && (
+          <Text
+            fontSize="sm"
+            fontWeight="semibold"
+            letterSpacing="0.18em"
+            textTransform="uppercase"
+            color="gold.300"
+          >
+            {tx("On stage")} · {name}
+          </Text>
+        )}
         <Heading
           as="h1"
           fontFamily="display"
           fontSize={{ base: "3xl", md: "5xl" }}
           lineHeight="1.15"
         >
-          {tx("{name}, choose an envelope", { name })}
+          {tx("Choose your question")}
         </Heading>
-        <Text fontSize={{ base: "md", md: "xl" }} color="whiteAlpha.800">
-          {tx("Tap one closed envelope. Its questions go to the judges.")}
-        </Text>
+        {!waiting && (
+          <Text fontSize={{ base: "md", md: "xl" }} color="whiteAlpha.800">
+            {tx("Tap one closed envelope. Its questions go to the judges.")}
+          </Text>
+        )}
       </Stack>
 
       {error && (
@@ -300,95 +306,91 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
         </Text>
       ) : (
         <SimpleGrid
-          columns={{ base: 3, md: 4, lg: 5, xl: 6 }}
-          gap={{ base: "3", md: "5", lg: "6" }}
+          columns={{ base: 2, md: 3, xl: 4 }}
+          gap={{ base: "5", md: "8", xl: "10" }}
           w="full"
+          px={{ base: "1", md: "2" }}
+          py="2"
         >
-          {view.slots.map((slot, i) => {
-            const selected = slot.id === stillThere;
-            return (
-              <chakra.button
-                key={slot.id}
-                type="button"
-                onClick={() => setChosen(slot.id)}
-                disabled={loading}
-                aria-label={tx("Envelope")}
-                aria-pressed={selected}
-                aspectRatio={1.45}
-                rounded="xl"
-                bg="linear-gradient(160deg, #E2C06A 0%, #C99A35 100%)"
-                color="brand.900"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                cursor="pointer"
-                boxShadow={
-                  selected
-                    ? "0 0 0 4px #1A234E, 0 0 0 7px #E2C06A, 0 18px 40px rgba(0,0,0,0.45)"
-                    : "0 8px 20px rgba(0,0,0,0.35)"
-                }
-                transform={
-                  selected ? "translateY(-6px) scale(1.04)" : undefined
-                }
-                opacity={stillThere && !selected ? 0.55 : 1}
-                transition="transform 0.18s, box-shadow 0.18s, opacity 0.18s"
-                animation="fade-in 0.4s ease-out both"
-                animationDelay={`${Math.min(i, 24) * 30}ms`}
-                _hover={{
-                  transform: selected ? undefined : "translateY(-3px)",
-                }}
-                _disabled={{ cursor: "wait" }}
-                _focusVisible={{
-                  outline: "3px solid",
-                  outlineColor: "white",
-                  outlineOffset: "3px",
-                }}
-              >
-                <Box
-                  as="span"
-                  display="inline-flex"
-                  boxSize={{ base: "10", md: "14" }}
-                  aria-hidden
-                >
-                  <Mail width="100%" height="100%" strokeWidth={1.4} />
-                </Box>
-              </chakra.button>
-            );
-          })}
+          {view.slots.map((slot, i) => (
+            <EnvelopeCard
+              key={slot.id}
+              index={i}
+              position={i + 1}
+              label={tx("Envelope {n}", { n: i + 1 })}
+              selected={slot.id === stillThere}
+              faded={Boolean(stillThere) && slot.id !== stillThere}
+              disabled={loading || waiting || Boolean(stillThere)}
+              onPick={() => setChosen(slot.id)}
+            />
+          ))}
         </SimpleGrid>
       )}
 
-      {/* Confirm on the screen itself: big buttons, no browser popup. */}
-      <Flex
-        gap="3"
-        direction={{ base: "column", sm: "row" }}
-        w={{ base: "full", sm: "auto" }}
-        visibility={stillThere ? "visible" : "hidden"}
-        aria-hidden={!stillThere}
-      >
-        <Button
-          size="xl"
-          colorPalette="gold"
-          color="brand.900"
-          px="10"
-          loading={loading}
-          onClick={open}
+      {/* How many are left in the draw. */}
+      {view.slots.length > 0 && (
+        <Text fontSize={{ base: "md", md: "lg" }} color="gold.300" letterSpacing="0.06em">
+          {view.slots.length === 1 ? tx("1 envelope left") : tx("{n} envelopes left", { n: view.slots.length })}
+        </Text>
+      )}
+
+      {/* Confirm over the whole screen, so the buttons are always in view (the grid can be taller
+          than the tablet), and no other envelope can be tapped meanwhile. */}
+      {!waiting && stillThere && (
+        <Flex
+          position="fixed"
+          inset="0"
+          zIndex="overlay"
+          align="center"
+          justify="center"
+          p={{ base: "5", md: "10" }}
+          bg="rgba(12,16,40,0.82)"
+          backdropFilter="blur(6px)"
+          animation="fade-in 0.2s ease-out"
+          role="dialog"
+          aria-modal="true"
+          aria-label={tx("{name}, open this envelope?", { name })}
         >
-          <MailOpen size={20} aria-hidden />
-          {tx("Open this envelope")}
-        </Button>
-        <Button
-          size="xl"
-          variant="outline"
-          color="white"
-          borderColor="whiteAlpha.500"
-          _hover={{ bg: "whiteAlpha.200" }}
-          disabled={loading}
-          onClick={() => setChosen(null)}
-        >
-          {tx("Choose another")}
-        </Button>
-      </Flex>
+          <Stack align="center" gap={{ base: "6", md: "8" }} w="full" maxW="lg" textAlign="center">
+            <Heading as="h2" fontFamily="display" fontSize={{ base: "2xl", md: "4xl" }} lineHeight="1.2">
+              {tx("{name}, open this envelope?", { name })}
+            </Heading>
+            <Box w="full" maxW={{ base: "xs", md: "sm" }}>
+              <EnvelopeCard
+                index={0}
+                position={view.slots.findIndex((slot) => slot.id === stillThere) + 1}
+                label={tx("Envelope {n}", { n: view.slots.findIndex((slot) => slot.id === stillThere) + 1 })}
+                selected
+                faded={false}
+                disabled
+                onPick={() => undefined}
+              />
+            </Box>
+            {error && (
+              <Box px="4" py="3" rounded="lg" bg="red.900/60" borderWidth="1px" borderColor="red.400" color="white">
+                {error}
+              </Box>
+            )}
+            <Flex gap="3" direction={{ base: "column", sm: "row" }} w={{ base: "full", sm: "auto" }}>
+              <Button size="xl" colorPalette="gold" color="brand.900" px="10" loading={loading} onClick={open} autoFocus>
+                <MailOpen size={20} aria-hidden />
+                {tx("Open this envelope")}
+              </Button>
+              <Button
+                size="xl"
+                variant="outline"
+                color="white"
+                borderColor="whiteAlpha.500"
+                _hover={{ bg: "whiteAlpha.200" }}
+                disabled={loading}
+                onClick={() => setChosen(null)}
+              >
+                {tx("Choose another")}
+              </Button>
+            </Flex>
+          </Stack>
+        </Flex>
+      )}
     </Stack>
   );
 }

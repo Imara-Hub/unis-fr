@@ -1,17 +1,36 @@
 import { API_URL } from "./api";
 import { apiErrorFrom, NETWORK_ERROR, type ApiError, type GraphQLErrorLike } from "./errors";
-import { REGISTER_PARTICIPANT, type Gender } from "./graphql/participants";
+import {
+  REGISTER_PARTICIPANT,
+  type Gender,
+  type GuardianRelation,
+  type RegisteredBy,
+  type RegistrarInstitutionType,
+} from "./graphql/participants";
+
+// The parent / guardian, or the person responsible at the school / masjid / markaz.
+export interface RegistrarContactInput {
+  name: string;
+  phone: string;
+  relation: GuardianRelation | null; // GUARDIAN
+  institutionType: RegistrarInstitutionType | null; // INSTITUTION
+  institutionName: string | null; // INSTITUTION
+}
 
 export interface RegistrationInput {
   firstName: string;
   middleName: string; // optional: "" when there is none
   lastName: string;
+  // The participant's own phone: required when they register themselves, optional otherwise ("" = none).
   phone: string;
+  registeredBy: RegisteredBy;
+  contact: RegistrarContactInput | null; // null when they register themselves
   dateOfBirth: string;
   gender: Gender;
   province: string;
   commune: string;
-  institution: string; // halaqa
+  institution: string; // madrassa / halaqah / markaz
+  institutionLocation: string; // where it is
 }
 
 // Burundi's five provinces, as on the competition flyer: suggestions only, any province can be typed.
@@ -97,7 +116,7 @@ export async function registerParticipant(
       query: REGISTER_PARTICIPANT,
       variables: {
         token,
-        input: { ...input, middleName: input.middleName.trim() || null, ...terms },
+        input: { ...input, middleName: input.middleName.trim() || null, phone: input.phone.trim() || null, ...terms },
         photo: null,
         idDocument: null,
       },

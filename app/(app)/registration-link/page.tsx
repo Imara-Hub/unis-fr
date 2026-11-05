@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery } from "@apollo/client/react";
 import { Box, Button, Card, Field, Flex, Heading, Link, Skeleton, Stack, Switch, Text, Textarea } from "@chakra-ui/react";
+import { Printer } from "lucide-react";
 import NextLink from "next/link";
 import { useState } from "react";
 import { confirmDialog } from "@/components/ConfirmDialog";
@@ -211,6 +212,28 @@ function LinkSections({ hasLink, noTerms }: { hasLink: boolean; noTerms: boolean
               {hint}
             </Box>
           </Stack>
+        </Card.Body>
+      </Card.Root>
+
+      {/* Paper form, for people without a phone or internet */}
+      <Card.Root>
+        <Card.Body p={{ base: "5", md: "7" }}>
+          <Flex justify="space-between" align={{ base: "flex-start", md: "center" }} gap="4" direction={{ base: "column", md: "row" }}>
+            <Box>
+              <Heading size="md" color="brand.900">
+                {tx("Paper registration form")}
+              </Heading>
+              <Text fontSize="sm" color="fg.muted">
+                {tx("For people without internet: print the blank form, let them fill it in by hand, then type it into the link for them.")}
+              </Text>
+            </Box>
+            <Button asChild variant="outline" colorPalette="brand" flexShrink={0}>
+              <NextLink href="/forms/blank">
+                <Printer size={16} aria-hidden />
+                {tx("Print a blank form")}
+              </NextLink>
+            </Button>
+          </Flex>
         </Card.Body>
       </Card.Root>
 

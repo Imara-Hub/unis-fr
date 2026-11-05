@@ -1,12 +1,15 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
-import { Badge, Button, Card, DataList, Field, Flex, Heading, Image, Link, SimpleGrid, Stack, Table, Text, Textarea } from "@chakra-ui/react";
+import { Badge, Box, Button, Card, DataList, Flex, Heading, Image, Link, SimpleGrid, Stack, Table, Text } from "@chakra-ui/react";
+import { FileText } from "lucide-react";
 import NextLink from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
 import { confirmDialog } from "@/components/ConfirmDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
+import { NumberTag } from "@/components/NumberTag";
+import { ReviewCard } from "@/components/ReviewCard";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { ScoreScale } from "@/components/ScoreScale";
 import { ReviewBadge, StatusBadge } from "@/components/StatusBadge";
@@ -15,16 +18,14 @@ import { ageOf, formatDateTime, formatDay } from "@/lib/dates";
 import { readApiError } from "@/lib/errors";
 import { ME } from "@/lib/graphql/auth";
 import { PARTICIPANT_SHEETS, type JudgeSheet } from "@/lib/graphql/judging";
-import { REGISTRATION_TERMS } from "@/lib/graphql/registration";
 import {
-  APPROVE_PARTICIPANT,
   DELETE_PARTICIPANT,
   PARTICIPANT,
-  REJECT_PARTICIPANT,
   SCORE_HISTORY,
   type ParticipantDetail,
 } from "@/lib/graphql/participants";
 import { formatPhone } from "@/lib/phone";
+import { useRegistrar } from "@/components/Registrar";
 import { useI18n } from "@/lib/i18n";
 
 export default function ParticipantPage() {
@@ -76,6 +77,7 @@ function Participant() {
             <ParticipantPhoto path={participant.photoUrl} size="large" />
             <Stack gap="4" flex="1" minW="0">
               <Flex gap="3" align="center" wrap="wrap">
+                <NumberTag number={participant.number} size="md" />
                 <Heading size="xl">{participant.fullName}</Heading>
                 {competing ? (
                   <StatusBadge status={participant.status} size="md" />
@@ -84,6 +86,16 @@ function Participant() {
                 )}
               </Flex>
               <Details participant={participant} />
+              {role === "ADMIN" && (
+                <Box>
+                  <Button asChild size="sm" variant="outline" colorPalette="brand">
+                    <NextLink href={`/forms/${participant.id}`}>
+                      <FileText size={15} aria-hidden />
+                      {tx("Registration form (print / PDF)")}
+                    </NextLink>
+                  </Button>
+                </Box>
+              )}
             </Stack>
           </Flex>
         </Card.Body>
@@ -171,13 +183,18 @@ function IdDocumentCard({ path }: { path: string }) {
 
 function Details({ participant: p }: { participant: ParticipantDetail }) {
   const { tx } = useI18n();
+  const registrar = useRegistrar();
+  const who = registrar.who(p);
   const items: [string, string][] = [
     [tx("Phone"), formatPhone(p.phone)],
+    [tx("Registered by"), who ?? registrar.kind(p.registeredBy)],
+    ...(p.contact ? [[tx("Their phone"), formatPhone(p.contact.phone)] as [string, string]] : []),
     [tx("Date of birth"), `${formatDay(p.dateOfBirth)} (${tx("{n} years", { n: ageOf(p.dateOfBirth) })})`],
     [tx("Gender"), p.gender === "MALE" ? tx("Male") : tx("Female")],
     [tx("Province"), p.province],
     [tx("Commune"), p.commune],
     [tx("Halaqa"), p.institution],
+    ...(p.institutionLocation ? [[tx("Location"), p.institutionLocation] as [string, string]] : []),
     // Only people registered before the guardian was dropped from the form have one.
     ...(p.guardianName ? [[tx("Guardian"), p.guardianName] as [string, string]] : []),
     ...(p.guardianPhone ? [[tx("Guardian’s phone"), formatPhone(p.guardianPhone)] as [string, string]] : []),
@@ -329,151 +346,6 @@ function History({ participantId }: { participantId: string }) {
 
 // The admin's decision: check the details, photo and ID document against the terms, then
 // approve (they compete) or reject with a reason. A rejected registration can still be approved.
-function ReviewCard({ participant: p }: { participant: ParticipantDetail }) {
-  const terms = useQuery(REGISTRATION_TERMS);
-  const [approve, approving] = useMutation(APPROVE_PARTICIPANT);
-  const [reject, rejecting] = useMutation(REJECT_PARTICIPANT);
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [reasonError, setReasonError] = useState<string | undefined>();
-  const { tx } = useI18n();
-
-  const current = terms.data?.registrationTerms;
-  // Marked or scored: in the competition, so rejecting is no longer possible. (Being on stage or
-  // having drawn locks it too; the server says so with REVIEW_LOCKED.)
-  const locked = p.sheetsSubmitted > 0 || p.status !== "PENDING";
-
-  async function onApprove() {
-    setError(null);
-    try {
-      await approve({ variables: { id: p.id } });
-    } catch (err) {
-      setError(readApiError(err).message);
-    }
-  }
-
-  async function onReject() {
-    setError(null);
-    setReasonError(undefined);
-    if (reason.trim().length < 3) {
-      setReasonError(tx("Say why, so you can tell the person (at least 3 characters)"));
-      return;
-    }
-    try {
-      await reject({ variables: { id: p.id, reason: reason.trim() } });
-      setRejectOpen(false);
-      setReason("");
-    } catch (err) {
-      const apiError = readApiError(err);
-      setError(apiError.message);
-      setReasonError(apiError.fields.reason);
-    }
-  }
-
-  const termsLine =
-    p.termsVersion === null
-      ? tx("Registered before terms were asked.")
-      : tx("Accepted the terms (version {n}) on {date}.", { n: p.termsVersion, date: formatDateTime(p.termsAcceptedAt ?? p.registeredAt) }) +
-        (current && current.version !== p.termsVersion ? ` ${tx("The current terms are version {n}.", { n: current.version })}` : "");
-  const waiting = p.review === "PENDING_REVIEW";
-
-  return (
-    <Card.Root borderColor={waiting ? "orange.300" : undefined} borderWidth={waiting ? "2px" : "1px"}>
-      <Card.Body gap="4">
-        <Flex justify="space-between" align="center" gap="3" wrap="wrap">
-          <Heading size="md">{tx("Review")}</Heading>
-          <ReviewBadge review={p.review} />
-        </Flex>
-
-        <Stack gap="1" fontSize="sm">
-          {waiting && (
-            <Text>{tx("Check the details, the photo and the ID document against the terms, then decide.")}</Text>
-          )}
-          <Text color="fg.muted">{termsLine}</Text>
-          {p.reviewedAt && !waiting && (
-            <Text color="fg.muted">
-              {p.reviewedBy
-                ? tx(p.review === "APPROVED" ? "Approved by {name} on {date}." : "Rejected by {name} on {date}.", {
-                    name: p.reviewedBy.name,
-                    date: formatDateTime(p.reviewedAt),
-                  })
-                : tx(p.review === "APPROVED" ? "Approved on {date}." : "Rejected on {date}.", { date: formatDateTime(p.reviewedAt) })}
-            </Text>
-          )}
-          {p.review === "REJECTED" && p.rejectionReason && (
-            <Text>
-              <Text as="span" fontWeight="semibold">
-                {tx("Reason:")}
-              </Text>{" "}
-              {p.rejectionReason}
-            </Text>
-          )}
-        </Stack>
-
-        {current && (
-          <Stack as="details" gap="2" fontSize="sm">
-            <Text as="summary" cursor="pointer" color="brand.600" fontWeight="semibold">
-              {tx("Read the terms and conditions")}
-            </Text>
-            <Text whiteSpace="pre-wrap" color="fg.muted" maxH="60" overflowY="auto" p="3" bg="bg.subtle" rounded="md">
-              {current.text}
-            </Text>
-          </Stack>
-        )}
-
-        <ErrorAlert message={error} />
-
-        {rejectOpen ? (
-          <Stack gap="3">
-            <Field.Root invalid={Boolean(reasonError)}>
-              <Field.Label>{tx("Why is this registration rejected?")}</Field.Label>
-              <Textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder={tx("e.g. Older than 29 according to the ID document")}
-                maxLength={500}
-                rows={3}
-                autoFocus
-              />
-              <Field.ErrorText>{reasonError}</Field.ErrorText>
-            </Field.Root>
-            <Text fontSize="xs" color="fg.muted">
-              {tx("The phone number stays taken. If someone registered with a number that is not theirs, delete the registration instead, so the real owner can register.")}
-            </Text>
-            <Flex gap="2" wrap="wrap">
-              <Button colorPalette="red" onClick={onReject} loading={rejecting.loading}>
-                {tx("Reject registration")}
-              </Button>
-              <Button variant="ghost" onClick={() => setRejectOpen(false)}>
-                {tx("Cancel")}
-              </Button>
-            </Flex>
-          </Stack>
-        ) : (
-          <Flex gap="2" wrap="wrap" align="center">
-            {p.review !== "APPROVED" && (
-              <Button colorPalette="green" onClick={onApprove} loading={approving.loading}>
-                {p.review === "REJECTED" ? tx("Approve instead") : tx("Approve")}
-              </Button>
-            )}
-            {p.review !== "REJECTED" && !locked && (
-              <Button variant="outline" colorPalette="red" onClick={() => setRejectOpen(true)}>
-                {tx("Reject")}
-              </Button>
-            )}
-            {p.review === "APPROVED" && locked && (
-              <Text fontSize="sm" color="fg.muted">
-                {tx("Already in the competition: it can no longer be rejected.")}
-              </Text>
-            )}
-          </Flex>
-        )}
-      </Card.Body>
-    </Card.Root>
-  );
-}
-
 function DeleteCard({ participant }: { participant: ParticipantDetail }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -484,7 +356,7 @@ function DeleteCard({ participant }: { participant: ParticipantDetail }) {
     const ok = await confirmDialog({
       destructive: true,
       confirmLabel: tx("Delete"),
-      message: tx("Delete the registration of {name}? The photo, judges’ sheets and history are deleted too. Their phone number can then register again.", {
+      message: tx("Delete the registration of {name}? The photo, judges’ sheets and history are deleted too. They can then register again.", {
         name: participant.fullName,
       }),
     });

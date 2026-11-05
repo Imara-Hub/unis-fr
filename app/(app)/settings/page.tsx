@@ -16,17 +16,21 @@ import {
 } from "@chakra-ui/react";
 import NextLink from "next/link";
 import { useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
 import { MIN_PASSWORD_LENGTH, PasswordStrength } from "@/components/PasswordInput";
 import { PageBanner } from "@/components/PageBanner";
+import { ShareLink } from "@/components/ShareLink";
 import { TeamMembers } from "@/components/TeamMembers";
+import { toaster } from "@/components/Toaster";
 import { UserAvatar } from "@/components/UserAvatar";
 import { uploadAvatar } from "@/lib/account";
+import { GREETING } from "@/lib/greeting";
 import { readApiError } from "@/lib/errors";
 import { CHANGE_PASSWORD, ME, REMOVE_AVATAR, UPDATE_PROFILE, type User } from "@/lib/graphql/auth";
 import { SCORING_RULES, type ScoringRules } from "@/lib/graphql/judging";
-import { SETTINGS, UPDATE_SETTINGS, type Settings } from "@/lib/graphql/participants";
+import { SET_RESULTS_PUBLISHED, SETTINGS, UPDATE_SETTINGS, type Settings } from "@/lib/graphql/participants";
 import { preparePhoto } from "@/lib/register";
 import { ROLE_LABELS } from "@/lib/graphql/staff";
 import type { AppKey } from "@/lib/i18n";
@@ -390,24 +394,73 @@ function CompetitionSection() {
         <Stack gap="8">
           <ScoringOverview rules={rules.data.scoringRules} />
           <CompetitionForm settings={data.settings} rules={rules.data.scoringRules} />
+          <PublishResults settings={data.settings} />
         </Stack>
       )}
     </SectionCard>
   );
 }
 
+// The public results page (/results): hidden until the admin publishes, then anyone can type a name.
+function PublishResults({ settings }: { settings: Settings }) {
+  const { tx } = useI18n();
+  const [setPublished, { loading, error }] = useMutation(SET_RESULTS_PUBLISHED, { refetchQueries: [SETTINGS] });
+  const published = Boolean(settings.resultsPublished);
+  const url = typeof window === "undefined" ? "/results" : `${window.location.origin}/results`;
+
+  async function toggle() {
+    const ok = await confirmDialog({
+      title: published ? tx("Hide the results?") : tx("Publish the results?"),
+      message: published
+        ? tx("The results page will show nothing again until you publish.")
+        : tx("Anyone with the results link can then type a participant's name and see if they passed. Publish only when all judging is done."),
+      confirmLabel: published ? tx("Hide the results") : tx("Publish the results"),
+      destructive: published,
+    });
+    if (!ok) return;
+    const res = await setPublished({ variables: { published: !published } }).catch(() => null);
+    if (res?.data) {
+      toaster.create({ type: "success", title: published ? tx("Results hidden") : tx("Results published") });
+    }
+  }
+
+  return (
+    <Stack gap="4" borderTopWidth="1px" pt="6">
+      <Flex justify="space-between" align={{ base: "flex-start", md: "center" }} gap="4" direction={{ base: "column", md: "row" }}>
+        <Box>
+          <Flex align="center" gap="2">
+            <Heading size="md" color="brand.900">
+              {tx("Results page")}
+            </Heading>
+            <Badge colorPalette={published ? "green" : "gray"}>{published ? tx("Published") : tx("Not published")}</Badge>
+          </Flex>
+          <Text fontSize="sm" color="fg.muted">
+            {tx("Participants, parents and schools type the participant's name to see if they passed. Nothing shows until you publish.")}
+          </Text>
+        </Box>
+        <Button colorPalette={published ? "red" : "brand"} variant={published ? "outline" : "solid"} loading={loading} onClick={toggle} flexShrink={0}>
+          {published ? tx("Hide the results") : tx("Publish the results")}
+        </Button>
+      </Flex>
+      {error && <ErrorAlert message={readApiError(error).message} />}
+      <ShareLink url={url} message={`${GREETING}! ${tx("See the Quran competition (Musabaqa) results with this link:")}`} qr />
+    </Stack>
+  );
+}
+
 // The paper sheet (fixed): how one judge's 100 points are made, and the penalties.
 function ScoringOverview({ rules: r }: { rules: ScoringRules }) {
   const raw = r.questions * r.questionPoints;
+  const share = Math.round((r.sautiMax / r.questions) * 100) / 100;
   const { tx } = useI18n();
   const parts = [
     ...Array.from({ length: r.questions }, (_, i) => ({
       key: `q${i + 1}`,
       text: `${tx("Q{n}", { n: i + 1 })} · ${r.questionPoints}`,
-      share: r.questionsWeight / r.questions,
+      share: r.questionPoints,
       color: ["#23305F", "#34437F", "#4A5A9C"][i % 3],
     })),
-    { key: "sauti", text: String(r.sautiMax), share: r.sautiMax, color: "#C99A35" },
+    { key: "presence", text: String(r.presencePoints), share: r.presencePoints, color: "#C99A35" },
   ];
   const penalties = [
     { sign: "X", name: tx("Tajweed, waqf or ibtida mistake"), points: r.tajweedPenalty },
@@ -422,12 +475,13 @@ function ScoringOverview({ rules: r }: { rules: ScoringRules }) {
           {tx("One judge’s sheet = 100 points")}
         </Text>
         <Text fontSize="sm" color="fg.muted">
-          {tx("{n} questions of {points} points ({raw} in all, counted for {weight}) plus the voice (sauti) out of {sauti}. These rules come from the paper sheet and are the same for every judge.", {
+          {tx("{n} questions of {points} points ({raw} in all) plus {presence} for being present. The voice (sauti, out of {sauti}) is inside the questions: {share} in each, lost with a deleted question. These rules are the same for every judge.", {
             n: r.questions,
             points: r.questionPoints,
             raw,
-            weight: r.questionsWeight,
+            presence: r.presencePoints,
             sauti: r.sautiMax,
+            share,
           })}
         </Text>
       </Box>
@@ -436,7 +490,7 @@ function ScoringOverview({ rules: r }: { rules: ScoringRules }) {
       <Box>
         <Flex h="9" rounded="lg" overflow="hidden" gap="2px" bg="white">
           {parts.map((p) => (
-            <Flex key={p.key} w={`${p.share}%`} bg={p.color} color="white" align="center" justify="center" fontSize="xs" fontWeight="semibold" minW="0">
+            <Flex key={p.key} w={`${p.share}%`} bg={p.color} color="white" align="center" justify="center" fontSize="xs" fontWeight="semibold" minW="4">
               <Text truncate px="1">
                 {p.text}
               </Text>
@@ -444,8 +498,8 @@ function ScoringOverview({ rules: r }: { rules: ScoringRules }) {
           ))}
         </Flex>
         <Flex justify="space-between" mt="1.5" fontSize="xs" color="fg.muted">
-          <Text>{tx("Questions: {n} points", { n: r.questionsWeight })}</Text>
-          <Text>Sauti: {r.sautiMax}</Text>
+          <Text>{tx("Questions: {n} points, sauti {sauti} inside", { n: raw, sauti: r.sautiMax })}</Text>
+          <Text>{tx("Presence: {n}", { n: r.presencePoints })}</Text>
         </Flex>
       </Box>
 
@@ -475,7 +529,7 @@ function ScoringOverview({ rules: r }: { rules: ScoringRules }) {
 
 // What the admin decides: how many judges sit on the panel and the pass mark (out of 100).
 function CompetitionForm({ settings, rules }: { settings: Settings; rules: ScoringRules }) {
-  const total = rules.questionsWeight + rules.sautiMax;
+  const total = rules.questions * rules.questionPoints + rules.presencePoints;
   const [passMark, setPassMark] = useState(String(settings.passMark));
   const [judgeCount, setJudgeCount] = useState(settings.judgeCount);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});

@@ -1,13 +1,15 @@
 "use client";
 
 import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { FullPageSpinner } from "@/components/AuthCard";
 import { ServerUnreachable } from "@/components/ServerUnreachable";
 import { DashboardShell } from "@/components/DashboardShell";
 import { LOGOUT, ME } from "@/lib/graphql/auth";
 import { useLiveUpdates } from "@/lib/useLiveUpdates";
+
+const TAB_TITLES: Record<string, string> = { ADMIN: "Admin", JUDGE: "Judge", STAFF: "Staff" };
 
 // Every page after login (dashboard, participants, phones, …): must be logged in, gets the sidebar, logout and live updates.
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -17,6 +19,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [logout, { loading: loggingOut }] = useMutation(LOGOUT);
 
   const user = data?.me;
+  const pathname = usePathname();
+  // The browser tab says who is using it, like "Stage · Musabaqa" on the stage screen.
+  // Set again after each page change, because Next puts its own title back on navigation.
+  const role = user?.role;
+  useEffect(() => {
+    const label = role ? TAB_TITLES[role] : undefined;
+    if (label) document.title = `${label} · Musabaqa`;
+  }, [role, pathname]);
   // The server answered "nobody is logged in" (or the session was revoked).
   const loggedOut = !loading && !error && !user;
 

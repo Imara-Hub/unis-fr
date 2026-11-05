@@ -1,10 +1,10 @@
 "use client";
 
-import { useMutation, useQuery } from "@apollo/client/react";
-import { Button, Input, InputGroup, Link, Stack, Text } from "@chakra-ui/react";
+import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
+import { Alert, Button, Input, InputGroup, Link, Stack, Text } from "@chakra-ui/react";
 import NextLink from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { AuthCard, FullPageSpinner } from "@/components/AuthCard";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
@@ -15,9 +15,21 @@ import { useI18n } from "@/lib/i18n";
 import { LOGIN, ME, SIGNUP_OPEN } from "@/lib/graphql/auth";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<FullPageSpinner />}>
+      <Login />
+    </Suspense>
+  );
+}
+
+function Login() {
   const router = useRouter();
+  // Coming from an invitation: the new account's email, and a word that it is ready.
+  const params = useSearchParams();
+  const justCreated = params.get("created") === "1";
   const { t, apiError } = useI18n();
   const me = useQuery(ME);
+  const client = useApolloClient();
   // Always asked fresh: a cached "open" from before the admin existed must not redirect.
   const signupOpen = useQuery(SIGNUP_OPEN, { fetchPolicy: "network-only" });
   const firstRun = signupOpen.data?.signupOpen === true;
@@ -26,23 +38,29 @@ export default function LoginPage() {
     awaitRefetchQueries: true,
   });
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => params.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showForgot, setShowForgot] = useState(false);
 
   // Already logged in: go straight to the dashboard. Nobody has an account yet (first time the
   // app is opened, empty database): create the admin account first.
+  // Coming from an invitation, the form shows even if someone is logged in here: they stay
+  // logged in until the new person logs in (and only on this browser).
+  const someoneHere = me.data?.me ?? null;
+  const stay = justCreated && Boolean(someoneHere);
   useEffect(() => {
-    if (me.data?.me) router.replace("/dashboard");
-    else if (firstRun) router.replace("/signup");
-  }, [me.data, firstRun, router]);
+    if (someoneHere && !justCreated) router.replace("/dashboard");
+    else if (!someoneHere && firstRun) router.replace("/signup");
+  }, [someoneHere, justCreated, firstRun, router]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
       await login({ variables: { email, password } });
+      // Nothing loaded for whoever used this browser before is kept for the new login.
+      await client.clearStore();
       router.replace("/dashboard");
     } catch (err) {
       setError(apiError(readApiError(err)).message);
@@ -52,7 +70,7 @@ export default function LoginPage() {
 
   // Wait for both answers so the login form never flashes before the signup redirect.
   // If the signup check fails, show the login form anyway.
-  if (me.loading || me.data?.me || signupOpen.loading || firstRun) return <FullPageSpinner />;
+  if (me.loading || (someoneHere && !stay) || signupOpen.loading || (firstRun && !someoneHere)) return <FullPageSpinner />;
 
   return (
     <AuthCard
@@ -64,6 +82,18 @@ export default function LoginPage() {
     >
       <form onSubmit={onSubmit} noValidate>
         <Stack gap="5">
+          {justCreated && !error && (
+            <Alert.Root status="success" rounded="lg">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>{t.login.accountCreated}</Alert.Title>
+                <Alert.Description>
+                  {t.login.accountCreatedHelp}
+                  {someoneHere && ` ${t.login.stillLoggedIn(someoneHere.name)}`}
+                </Alert.Description>
+              </Alert.Content>
+            </Alert.Root>
+          )}
           <ErrorAlert message={error} />
 
           <FormField label={t.common.email}>
@@ -75,7 +105,7 @@ export default function LoginPage() {
                 size="lg"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                autoFocus
+                autoFocus={!justCreated}
               />
             </InputGroup>
           </FormField>

@@ -42,7 +42,7 @@ import {
   type ParticipantStatus,
   type Settings,
 } from "@/lib/graphql/participants";
-import { formatPhone } from "@/lib/phone";
+import { formatPhone, reachPhone } from "@/lib/phone";
 import type { AppKey } from "@/lib/i18n";
 import { Copy, Download, Ellipsis, Eye, LayoutGrid, List, Phone, Search, SlidersHorizontal, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
@@ -74,7 +74,12 @@ const GENDER_LABELS: Record<Gender, AppKey> = { MALE: "Boy", FEMALE: "Girl" };
 const SORTS: Record<string, { label: AppKey; compare: (a: ParticipantRow, b: ParticipantRow) => number }> = {
   newest: { label: "Newest first", compare: (a: ParticipantRow, b: ParticipantRow) => b.registeredAt.localeCompare(a.registeredAt) },
   oldest: { label: "Oldest first", compare: (a: ParticipantRow, b: ParticipantRow) => a.registeredAt.localeCompare(b.registeredAt) },
-  name: { label: "Name A–Z", compare: (a: ParticipantRow, b: ParticipantRow) => a.fullName.localeCompare(b.fullName) },
+  // The default. Capitals and accents ignored ("AMURI" next to "Amina"); same name: lower number first.
+  name: {
+    label: "Name A–Z",
+    compare: (a: ParticipantRow, b: ParticipantRow) =>
+      a.fullName.localeCompare(b.fullName, undefined, { sensitivity: "base" }) || (a.number ?? 0) - (b.number ?? 0),
+  },
   pointsHigh: { label: "Points: high to low", compare: (a: ParticipantRow, b: ParticipantRow) => (b.score ?? -1) - (a.score ?? -1) },
   pointsLow: {
     label: "Points: low to high",
@@ -113,7 +118,7 @@ export default function ParticipantsPage() {
   const [searchText, setSearchText] = useState("");
   const search = useDebounced(searchText.trim(), 300);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
-  const [sort, setSort] = useState<SortKey>("newest");
+  const [sort, setSort] = useState<SortKey>("name");
   const [showFilters, setShowFilters] = useState(false);
   // The server always draws the list; the remembered view takes over once in the browser.
   const view = useSyncExternalStore(subscribeView, readView, () => "list" as View);
@@ -469,6 +474,7 @@ function ParticipantList({ participants, settings }: { participants: Participant
                           </NextLink>
                         </Box>
                         <Text fontSize="xs" color="fg.muted">
+                          {p.number !== null && `N° ${p.number} · `}
                           {tx(GENDER_LABELS[p.gender])} · {tx("{n} years", { n: ageOf(p.dateOfBirth) })}
                         </Text>
                       </Box>
@@ -483,7 +489,12 @@ function ParticipantList({ participants, settings }: { participants: Participant
                     </Text>
                   </Table.Cell>
                   <Table.Cell whiteSpace="nowrap" color="fg.muted" fontSize="sm">
-                    {formatPhone(p.phone)}
+                    {formatPhone(reachPhone(p))}
+                    {!p.phone && p.contact && (
+                      <Text fontSize="xs" truncate maxW="40">
+                        {tx("via {name}", { name: p.contact.name })}
+                      </Text>
+                    )}
                   </Table.Cell>
                   <Table.Cell>
                     <PointsCell score={p.score} settings={settings} />
@@ -512,6 +523,7 @@ function ParticipantList({ participants, settings }: { participants: Participant
                     {p.fullName}
                   </Text>
                   <Text fontSize="xs" color="fg.muted" truncate>
+                    {p.number !== null && `N° ${p.number} · `}
                     {p.institution} · {p.commune}
                   </Text>
                   <Text fontSize="xs" color="fg.muted">
@@ -581,6 +593,7 @@ function PhotoGrid({ participants }: { participants: ParticipantRow[] }) {
                 {p.fullName}
               </Text>
               <Text fontSize="xs" color="fg.muted" truncate>
+                {p.number !== null && `N° ${p.number} · `}
                 {p.institution}
               </Text>
             </Box>
@@ -595,6 +608,7 @@ function PhotoGrid({ participants }: { participants: ParticipantRow[] }) {
 function RowMenu({ participant: p }: { participant: ParticipantRow }) {
   const [copied, setCopied] = useState<boolean | null>(null); // null: not tried yet
   const { tx } = useI18n();
+  const phone = reachPhone(p);
   return (
     <Menu.Root positioning={{ placement: "bottom-end" }} onExitComplete={() => setCopied(null)}>
       <Menu.Trigger asChild>
@@ -615,16 +629,16 @@ function RowMenu({ participant: p }: { participant: ParticipantRow }) {
               value="copy"
               closeOnSelect={false}
               onSelect={() => {
-                void copyText(p.phone).then(setCopied);
+                void copyText(phone ?? "").then(setCopied);
               }}
             >
               <CopyIcon />
               {copied === null ? tx("Copy phone number") : copied ? tx("Copied!") : tx("Copy failed")}
             </Menu.Item>
             <Menu.Item value="call" asChild>
-              <a href={`tel:${p.phone}`}>
+              <a href={`tel:${phone ?? ""}`}>
                 <PhoneIcon />
-                {tx("Call {phone}", { phone: formatPhone(p.phone) })}
+                {tx("Call {phone}", { phone: formatPhone(phone) })}
               </a>
             </Menu.Item>
           </Menu.Content>

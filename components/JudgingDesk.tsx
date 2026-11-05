@@ -561,7 +561,8 @@ function Sheet({ participant, rules }: { participant: StageParticipant; rules: S
   const queue = useRef<Promise<void>>(Promise.resolve());
 
   const total = sheetTotal(marks, sauti, rules);
-  const raw = marks.reduce((sum, q) => sum + questionScore(q, rules), 0);
+  // The 3 questions together (out of 99), sauti inside.
+  const raw = marks.reduce((sum, q) => sum + questionScore(q, sauti, rules), 0);
 
   function touch() {
     version.current += 1;
@@ -658,7 +659,7 @@ function Sheet({ participant, rules }: { participant: StageParticipant; rules: S
                     {tx("Question {n}", { n: i + 1 })}
                   </Text>
                   <Text fontWeight="bold" color={gone ? "red.600" : "brand.900"} fontVariantNumeric="tabular-nums">
-                    {gone ? tx("Deleted · 0") : `${questionScore(m, rules)} / ${rules.questionPoints}`}
+                    {gone ? tx("Deleted · 0") : `${questionScore(m, sauti, rules)} / ${rules.questionPoints}`}
                   </Text>
                 </Flex>
                 <Text fontFamily="display" fontSize="xl" color="brand.900" mt="1" lineClamp={2}>
@@ -757,9 +758,8 @@ function Sheet({ participant, rules }: { participant: StageParticipant; rules: S
       >
         <Box>
           <Text fontSize="sm" color="whiteAlpha.800">
-            {tx("Questions")} {round(raw)} / {rules.questions * rules.questionPoints} →{" "}
-            {round((raw * rules.questionsWeight) / (rules.questions * rules.questionPoints))} / {rules.questionsWeight} · Sauti{" "}
-            {sauti ?? "—"} / {rules.sautiMax}
+            {tx("Questions")} {round(raw)} / {rules.questions * rules.questionPoints} ({tx("sauti inside")}: {sauti ?? "—"} /{" "}
+            {rules.sautiMax}) · {tx("Presence")} +{rules.presencePoints}
           </Text>
           <Text fontSize="3xl" fontWeight="bold" fontVariantNumeric="tabular-nums" lineHeight="1.2">
             {total ?? "—"}{" "}
