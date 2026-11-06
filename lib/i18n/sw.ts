@@ -68,6 +68,7 @@ export const sw: Messages = {
     NOT_FOUND: "Haikupatikana. Huenda imefutwa.",
     ENVELOPE_TAKEN: "Bahasha hii tayari imechaguliwa.",
     NOT_DRAWN: "Mshiriki huyu bado hajachagua bahasha.",
+    SHEET_LOCKED: "Karatasi hii imeshatumwa na haiwezi kubadilishwa tena.",
   },
 
   server: {
@@ -140,6 +141,7 @@ export const sw: Messages = {
   },
 
   results: {
+    finalist: "Ameingia fainali",
     eyebrow: "Matokeo ya Musabaqa",
     title: "Je, nimefaulu?",
     subtitle: "Andika jina la mshiriki kama lilivyotolewa wakati wa kujisajili.",

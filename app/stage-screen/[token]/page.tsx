@@ -316,8 +316,7 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
             <EnvelopeCard
               key={slot.id}
               index={i}
-              position={i + 1}
-              label={tx("Envelope {n}", { n: i + 1 })}
+              label={tx("Envelope")}
               selected={slot.id === stillThere}
               faded={Boolean(stillThere) && slot.id !== stillThere}
               disabled={loading || waiting || Boolean(stillThere)}
@@ -358,8 +357,7 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
             <Box w="full" maxW={{ base: "xs", md: "sm" }}>
               <EnvelopeCard
                 index={0}
-                position={view.slots.findIndex((slot) => slot.id === stillThere) + 1}
-                label={tx("Envelope {n}", { n: view.slots.findIndex((slot) => slot.id === stillThere) + 1 })}
+                label={tx("Envelope")}
                 selected
                 faded={false}
                 disabled

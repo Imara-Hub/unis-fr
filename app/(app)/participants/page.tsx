@@ -500,7 +500,7 @@ function ParticipantList({ participants, settings }: { participants: Participant
                     <PointsCell score={p.score} settings={settings} />
                   </Table.Cell>
                   <Table.Cell>
-                    <StatusBadge status={p.status} />
+                    <StatusBadge status={p.status} finalist={p.finalist} />
                   </Table.Cell>
                   <Table.Cell pe="4" onClick={(e) => e.stopPropagation()}>
                     <RowMenu participant={p} />
@@ -534,7 +534,7 @@ function ParticipantList({ participants, settings }: { participants: Participant
                   <Text fontFamily="display" fontSize="lg" lineHeight="1" color="brand.900">
                     {p.score ?? "—"}
                   </Text>
-                  <StatusBadge status={p.status} />
+                  <StatusBadge status={p.status} finalist={p.finalist} />
                 </Stack>
               </NextLink>
             </Flex>
@@ -569,7 +569,7 @@ function PhotoGrid({ participants }: { participants: ParticipantRow[] }) {
             <Box position="relative" bg="bg.muted" aspectRatio={3 / 4}>
               <Image src={apiUrl(p.photoUrl)} alt="" w="full" h="full" objectFit="cover" loading="lazy" />
               <Box position="absolute" top="2" right="2">
-                <StatusBadge status={p.status} />
+                <StatusBadge status={p.status} finalist={p.finalist} />
               </Box>
               {p.score !== null && (
                 <Box

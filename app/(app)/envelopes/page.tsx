@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@apollo/client/react";
 import { Alert, Badge, Box, Button, Card, Circle, Flex, Heading, IconButton, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
-import { Copy, ExternalLink, Lock, Mail, MailOpen, MonitorSmartphone, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, MonitorSmartphone, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { confirmDialog } from "@/components/ConfirmDialog";
 import { RoleOnly } from "@/components/AdminOnly";
@@ -11,6 +11,7 @@ import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
 import { PageBanner } from "@/components/PageBanner";
 import { isLocalLink } from "@/components/ShareLink";
+import { EnvelopeFace } from "@/components/StageEnvelope";
 import { toaster } from "@/components/Toaster";
 import { readApiError } from "@/lib/errors";
 import { ME } from "@/lib/graphql/auth";
@@ -41,39 +42,49 @@ export default function EnvelopesPage() {
   return (
     <RoleOnly roles={["ADMIN", "JUDGE", "STAFF"]}>
       <PageBanner
-        eyebrow={tx("Questions")}
-        title={tx("Envelopes")}
-        description={
-          isAdmin
-            ? tx("Write the envelopes here: 3 questions each. On stage, the participant picks one closed envelope on the stage screen; it is then used and leaves the draw.")
-            : tx("The admin prepares the envelopes. Their questions stay sealed until a participant draws one.")
+        title={tx("Questions")}
+        actions={
+          isAdmin ? (
+            <Button asChild size="lg" bg="gold.400" color="brand.900" _hover={{ bg: "gold.300" }}>
+              <a href="#new-envelope">
+                <Plus size={18} aria-hidden />
+                {tx("Write questions")}
+              </a>
+            </Button>
+          ) : undefined
         }
-        stats={[
-          { label: tx("Envelopes"), value: data ? envelopes.length : undefined },
-          { label: tx("Still in the draw"), value: data ? unused.length : undefined },
-          { label: tx("Drawn"), value: data ? envelopes.length - unused.length : undefined },
+        rings={[
+          { label: tx("Available"), value: data ? unused.length : undefined, total: envelopes.length, color: "#4ADE80" },
+          { label: tx("Used"), value: data ? envelopes.length - unused.length : undefined, total: envelopes.length, color: "#E2C06A" },
         ]}
       />
       <Stack gap={{ base: "6", md: "8" }}>
         {isAdmin && <StageScreenCard />}
-        {isAdmin && <EnvelopeForm key={editing?.id ?? "new"} editing={editing} onDone={() => setEditing(null)} />}
+        {isAdmin && (
+          <Box id="new-envelope" scrollMarginTop="24">
+            <EnvelopeForm key={editing?.id ?? "new"} editing={editing} onDone={() => setEditing(null)} />
+          </Box>
+        )}
 
         <Card.Root>
           <Card.Body p={{ base: "5", md: "7" }} gap="4">
             <Heading size="md" color="brand.900">
-              {tx("All envelopes")}
+              {tx("All questions")}
             </Heading>
             <ErrorAlert message={error ? readApiError(error).message : null} />
             {loading && !data ? (
               <Text color="fg.muted">{tx("Loading…")}</Text>
             ) : envelopes.length === 0 ? (
               <Text color="fg.muted" fontSize="sm">
-                {isAdmin ? tx("No envelopes yet. Prepare at least one per participant.") : tx("The admin has not prepared any envelope yet.")}
+                {isAdmin ? tx("No questions yet. Prepare one set per participant.") : tx("The admin has not written any questions yet.")}
               </Text>
             ) : (
-              <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} gap="4">
+              <SimpleGrid columns={{ base: 2, md: 3, xl: 4 }} gap={{ base: "4", md: "6" }}>
                 {envelopes.map((e) => (
-                  <EnvelopeCard key={e.id} envelope={e} canEdit={isAdmin} onEdit={() => setEditing(e)} />
+                  <EnvelopeCard key={e.id} envelope={e} canEdit={isAdmin} onEdit={() => {
+                      setEditing(e);
+                      document.getElementById("new-envelope")?.scrollIntoView({ behavior: "smooth" });
+                    }} />
                 ))}
               </SimpleGrid>
             )}
@@ -230,7 +241,7 @@ function EnvelopeForm({ editing, onDone }: { editing: Envelope | null; onDone: (
               </Circle>
               <Box>
                 <Heading size="md" color="brand.900">
-                  {editing ? tx("Change envelope {n}", { n: editing.number }) : tx("Prepare a new envelope")}
+                  {editing ? tx("Change questions {n}", { n: editing.number }) : tx("Write new questions")}
                 </Heading>
                 <Text fontSize="sm" color="fg.muted">
                   {tx("Write where each question starts, e.g. “An-Naba 1–10”.")}
@@ -256,7 +267,7 @@ function EnvelopeForm({ editing, onDone }: { editing: Envelope | null; onDone: (
                 loading={createState.loading || updateState.loading}
                 disabled={questions.some((q) => q.trim().length < 2)}
               >
-                {editing ? tx("Save changes") : tx("Seal the envelope")}
+                {editing ? tx("Save changes") : tx("Save the questions")}
               </Button>
               {editing && (
                 <Button variant="ghost" onClick={onDone}>
@@ -265,7 +276,7 @@ function EnvelopeForm({ editing, onDone }: { editing: Envelope | null; onDone: (
               )}
               {saved && (
                 <Text fontSize="sm" color="green.600">
-                  {tx("Envelope {n} is ready.", { n: saved })}
+                  {tx("Questions {n} are ready.", { n: saved })}
                 </Text>
               )}
             </Flex>
@@ -282,7 +293,7 @@ function EnvelopeCard({ envelope: e, canEdit, onEdit }: { envelope: Envelope; ca
   const { tx } = useI18n();
 
   async function onDelete() {
-    if (!(await confirmDialog({ message: tx("Delete envelope {n}?", { n: e.number }), confirmLabel: tx("Delete"), destructive: true }))) return;
+    if (!(await confirmDialog({ message: tx("Delete questions {n}?", { n: e.number }), confirmLabel: tx("Delete"), destructive: true }))) return;
     try {
       await remove({ variables: { id: e.id } });
     } catch (err) {
@@ -291,55 +302,29 @@ function EnvelopeCard({ envelope: e, canEdit, onEdit }: { envelope: Envelope; ca
   }
 
   return (
-    <Box rounded="xl" borderWidth="1px" p="4" bg={e.used ? "bg.subtle" : "white"} opacity={e.used ? 0.8 : 1}>
-      <Flex justify="space-between" align="center" mb="3" gap="2">
-        <Flex align="center" gap="2">
-          <Box color={e.used ? "fg.muted" : "gold.600"}>{e.used ? <MailOpen size={18} aria-hidden /> : <Mail size={18} aria-hidden />}</Box>
-          <Text fontWeight="semibold" color="brand.900">
-            {tx("Envelope {n}", { n: e.number })}
-          </Text>
-        </Flex>
+    <Stack gap="2.5">
+      <EnvelopeFace used={e.used} />
+      <Flex justify="flex-end" align="center" gap="2" minH="8">
         {e.used ? (
           <Badge variant="subtle" colorPalette="gray">
-            {tx("Drawn")}
+            {tx("Used")}
           </Badge>
         ) : !canEdit ? (
-          <Badge variant="subtle" colorPalette="gold">
-            {tx("Sealed")}
+          <Badge variant="subtle" colorPalette="green">
+            {tx("Available")}
           </Badge>
         ) : (
           <Flex gap="1">
-            <IconButton aria-label={tx("Change envelope {n}", { n: e.number })} size="xs" variant="ghost" onClick={onEdit}>
+            <IconButton aria-label={tx("Change questions {n}", { n: e.number })} size="xs" variant="ghost" onClick={onEdit}>
               <Pencil size={14} />
             </IconButton>
-            <IconButton aria-label={tx("Delete envelope {n}", { n: e.number })} size="xs" variant="ghost" colorPalette="red" loading={loading} onClick={onDelete}>
+            <IconButton aria-label={tx("Delete questions {n}", { n: e.number })} size="xs" variant="ghost" colorPalette="red" loading={loading} onClick={onDelete}>
               <Trash2 size={14} />
             </IconButton>
           </Flex>
         )}
       </Flex>
-      {e.questions.length === 0 && (
-        <Flex align="center" gap="2" color="fg.muted" fontSize="sm">
-          <Lock size={14} aria-hidden />
-          {tx("Questions hidden until drawn")}
-        </Flex>
-      )}
-      <Stack gap="1.5" as="ol">
-        {e.questions.map((q, i) => (
-          <Flex as="li" key={i} gap="2" fontSize="sm">
-            <Text color="fg.subtle" w="4">
-              {i + 1}.
-            </Text>
-            <Text>{q}</Text>
-          </Flex>
-        ))}
-      </Stack>
-      {e.usedBy && (
-        <Text fontSize="xs" color="fg.muted" mt="3">
-          {tx("Drawn by {name}", { name: e.usedBy.fullName })}
-        </Text>
-      )}
       <ErrorAlert message={error} />
-    </Box>
+    </Stack>
   );
 }

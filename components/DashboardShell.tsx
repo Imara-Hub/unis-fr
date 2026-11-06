@@ -21,7 +21,7 @@ const NAV: { href: string; label: AppKey; icon: LucideIcon; roles: Role[] }[] = 
   { href: "/stage", label: "Live stage", icon: Mic, roles: ["ADMIN", "STAFF"] }, // watch the judging (read only)
   { href: "/registrations", label: "Registrations", icon: ClipboardCheck, roles: ["ADMIN"] }, // review queue
   { href: "/participants", label: "Participants", icon: Users, roles: ["ADMIN", "JUDGE", "STAFF"] },
-  { href: "/envelopes", label: "Envelopes", icon: Mail, roles: ["ADMIN", "JUDGE", "STAFF"] }, // judges prepare them
+  { href: "/envelopes", label: "Questions", icon: Mail, roles: ["ADMIN", "JUDGE", "STAFF"] }, // judges prepare them
   { href: "/registration-link", label: "Registration link", icon: Link2, roles: ["ADMIN"] },
   { href: "/team", label: "Team", icon: UserCog, roles: ["ADMIN"] },
   // Everyone: their own profile and password. The admin also sees competition and team settings.

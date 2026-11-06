@@ -11,12 +11,14 @@ export interface ScoringRules {
   fathPenalty: number;
   tanbihPenalty: number;
   tajweedPenalty: number;
+  kusitaPenalty: number;
 }
 
 export interface Marks {
   fath: number; // ● reminded by the judge
   tanbih: number; // I judge tapped the table
   tajweed: number; // X tajweed / waqf / ibtida mistake
+  kusita: number; // S the participant hesitates
 }
 
 export interface QuestionMarks extends Marks {
@@ -60,6 +62,7 @@ const SHEET_FIELDS = gql`
       fath
       tanbih
       tajweed
+      kusita
       score
       deleted
     }
@@ -140,6 +143,7 @@ export const SCORING_RULES: TypedDocumentNode<{ scoringRules: ScoringRules }> = 
       fathPenalty
       tanbihPenalty
       tajweedPenalty
+      kusitaPenalty
     }
   }
 `;
@@ -260,7 +264,8 @@ export const DRAW_ENVELOPE: TypedDocumentNode<{ drawEnvelope: { updatedAt: strin
 function questionPoints(q: Marks, sauti: number | null, r: ScoringRules) {
   if (q.fath >= r.fathLimit) return 0;
   const recitation = r.questionPoints - r.sautiMax / r.questions;
-  const lost = q.fath * r.fathPenalty + q.tanbih * r.tanbihPenalty + q.tajweed * r.tajweedPenalty;
+  const lost =
+    q.fath * r.fathPenalty + q.tanbih * r.tanbihPenalty + q.tajweed * r.tajweedPenalty + (q.kusita ?? 0) * r.kusitaPenalty;
   return Math.max(0, recitation - lost) + (sauti ?? 0) / r.questions;
 }
 
@@ -287,6 +292,7 @@ export interface QueueParticipant {
   registeredAt: string;
   score: number | null;
   status: "PENDING" | "PASSED" | "FAILED";
+  finalist: boolean;
   sheetsSubmitted: number;
   envelope: { id: string; number: number } | null;
 }
@@ -307,6 +313,7 @@ export const STAGE_QUEUE: TypedDocumentNode<{ participants: QueueParticipant[] }
       registeredAt
       score
       status
+      finalist
       sheetsSubmitted
       envelope {
         id

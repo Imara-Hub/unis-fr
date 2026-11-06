@@ -27,6 +27,7 @@ import {
 import { formatPhone } from "@/lib/phone";
 import { useRegistrar } from "@/components/Registrar";
 import { useI18n } from "@/lib/i18n";
+import { MARK_TYPES } from "@/lib/marks";
 
 export default function ParticipantPage() {
   return (
@@ -80,7 +81,7 @@ function Participant() {
                 <NumberTag number={participant.number} size="md" />
                 <Heading size="xl">{participant.fullName}</Heading>
                 {competing ? (
-                  <StatusBadge status={participant.status} size="md" />
+                  <StatusBadge status={participant.status} finalist={participant.finalist} size="md" />
                 ) : (
                   <ReviewBadge review={participant.review} size="md" />
                 )}
@@ -268,9 +269,11 @@ function SheetSummary({ sheet: s }: { sheet: JudgeSheet }) {
         <Table.Header>
           <Table.Row>
             <Table.ColumnHeader>{tx("Question")}</Table.ColumnHeader>
-            <Table.ColumnHeader textAlign="center">X</Table.ColumnHeader>
-            <Table.ColumnHeader textAlign="center">I</Table.ColumnHeader>
-            <Table.ColumnHeader textAlign="center">●</Table.ColumnHeader>
+            {MARK_TYPES.map((t) => (
+              <Table.ColumnHeader key={t.kind} textAlign="center" color={`${t.palette}.700`}>
+                {t.name}
+              </Table.ColumnHeader>
+            ))}
             <Table.ColumnHeader textAlign="end">{tx("Points")}</Table.ColumnHeader>
           </Table.Row>
         </Table.Header>
@@ -278,16 +281,18 @@ function SheetSummary({ sheet: s }: { sheet: JudgeSheet }) {
           {s.questions.map((q, i) => (
             <Table.Row key={i}>
               <Table.Cell>{i + 1}</Table.Cell>
-              <Table.Cell textAlign="center">{q.tajweed}</Table.Cell>
-              <Table.Cell textAlign="center">{q.tanbih}</Table.Cell>
-              <Table.Cell textAlign="center">{q.fath}</Table.Cell>
+              {MARK_TYPES.map((t) => (
+                <Table.Cell key={t.kind} textAlign="center" fontVariantNumeric="tabular-nums" color={q[t.kind] ? `${t.palette}.700` : "fg.subtle"}>
+                  {q[t.kind] ?? 0}
+                </Table.Cell>
+              ))}
               <Table.Cell textAlign="end" color={q.deleted ? "red.600" : undefined} fontWeight="semibold">
                 {q.deleted ? tx("Deleted") : q.score}
               </Table.Cell>
             </Table.Row>
           ))}
           <Table.Row>
-            <Table.Cell colSpan={4}>Sauti</Table.Cell>
+            <Table.Cell colSpan={MARK_TYPES.length + 1}>Sauti</Table.Cell>
             <Table.Cell textAlign="end" fontWeight="semibold">
               {s.sauti ?? "—"}
             </Table.Cell>
@@ -309,7 +314,7 @@ function History({ participantId }: { participantId: string }) {
         <Stack gap="3">
           <Heading size="md">{tx("History")}</Heading>
           <Text fontSize="sm" color="fg.muted" mt="-2">
-            {tx("Every submitted sheet and every correction, with the judge’s total.")}
+            {tx("Every submitted sheet, with the judge’s total.")}
           </Text>
           <ErrorAlert message={error ? readApiError(error).message : null} />
           {history.length === 0 ? (

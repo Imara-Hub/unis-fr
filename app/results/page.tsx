@@ -99,6 +99,11 @@ function ResultCard({ result: r }: { result: PublicResult }) {
             <Badge colorPalette={tone} size="lg">
               {r.status === "PASSED" ? tr.passed : r.status === "FAILED" ? tr.failed : tr.pending}
             </Badge>
+            {r.finalist && (
+              <Badge bg="gold.400" color="brand.900" size="lg">
+                {tr.finalist}
+              </Badge>
+            )}
             {r.score !== null && (
               <Text fontSize="sm" color="fg.muted">
                 {tr.score(r.score)}

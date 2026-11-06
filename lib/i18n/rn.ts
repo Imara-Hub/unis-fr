@@ -68,6 +68,7 @@ export const rn: Messages = {
     NOT_FOUND: "Ntibibonetse. Kumbure vyafuswe.",
     ENVELOPE_TAKEN: "Iyi bahasha yamaze gutorwa.",
     NOT_DRAWN: "Uwo yitabira ntaratora ibahasha.",
+    SHEET_LOCKED: "Uru rupapuro rwararungitswe kandi ntirugishobora guhindurwa.",
   },
 
   server: {
@@ -140,6 +141,7 @@ export const rn: Messages = {
   },
 
   results: {
+    finalist: "Yashitse ku rushanzwe rwa nyuma",
     eyebrow: "Ivyavuye muri Musabaqa",
     title: "Noba natsinze?",
     subtitle: "Andika izina ry’uwitabira nk’uko ryatanzwe mu kwiyandikisha.",

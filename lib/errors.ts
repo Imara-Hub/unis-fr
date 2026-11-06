@@ -21,6 +21,7 @@ const MESSAGES: Record<string, string> = {
   NOT_FOUND: "Not found. It may have been deleted.",
   ENVELOPE_TAKEN: "This envelope was already drawn.",
   NOT_DRAWN: "This participant has not drawn an envelope yet.",
+  SHEET_LOCKED: "This sheet was submitted and can no longer be changed.",
   VALIDATION_FAILED: "Please check the highlighted fields.",
   CSRF_FAILED: "Request blocked for security reasons. Reload the page.",
 };

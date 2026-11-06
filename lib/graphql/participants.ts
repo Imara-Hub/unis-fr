@@ -36,6 +36,7 @@ export interface ParticipantRow {
   photoUrl: string;
   score: number | null; // final: the judges' average, null until the panel is complete
   status: ParticipantStatus;
+  finalist: boolean; // among the best who passed: goes to the final
   sheetsSubmitted: number; // judges who submitted their sheet
   registeredAt: string;
   review: ReviewStatus;
@@ -61,6 +62,7 @@ export interface Counts {
   pending: number;
   passed: number;
   failed: number;
+  finalists: number; // going to the final
   awaitingReview: number | null;
   rejected: number | null;
 }
@@ -69,6 +71,7 @@ export interface Settings {
   passMark: number;
   maxScore: number;
   judgeCount: number; // judges who must submit before the average counts
+  finalistCount: number; // the best this many of those who passed go to the final
   // Only in the SETTINGS query: is the public results page showing the results?
   resultsPublished?: boolean;
   resultsPublishedAt?: string | null;
@@ -105,6 +108,7 @@ const ROW_FIELDS = gql`
     photoUrl
     score
     status
+    finalist
     sheetsSubmitted
     registeredAt
     review
@@ -154,6 +158,7 @@ export const PARTICIPANT_COUNTS: TypedDocumentNode<{ participantCounts: Counts; 
       pending
       passed
       failed
+      finalists
       awaitingReview
       rejected
     }
@@ -161,6 +166,7 @@ export const PARTICIPANT_COUNTS: TypedDocumentNode<{ participantCounts: Counts; 
       passMark
       maxScore
       judgeCount
+      finalistCount
       updatedAt
     }
   }
@@ -178,6 +184,7 @@ export const PARTICIPANT: TypedDocumentNode<
       passMark
       maxScore
       judgeCount
+      finalistCount
       updatedAt
     }
   }
@@ -232,6 +239,7 @@ export const SETTINGS: TypedDocumentNode<{ settings: Settings }> = gql`
       passMark
       maxScore
       judgeCount
+      finalistCount
       resultsPublished
       resultsPublishedAt
       updatedAt
@@ -241,13 +249,14 @@ export const SETTINGS: TypedDocumentNode<{ settings: Settings }> = gql`
 
 export const UPDATE_SETTINGS: TypedDocumentNode<
   { updateSettings: Settings },
-  { input: { passMark: number; maxScore: number; judgeCount: number } }
+  { input: { passMark: number; maxScore: number; judgeCount: number; finalistCount: number } }
 > = gql`
   mutation UpdateSettings($input: UpdateSettingsInput!) {
     updateSettings(input: $input) {
       passMark
       maxScore
       judgeCount
+      finalistCount
       updatedAt
     }
   }
@@ -299,6 +308,7 @@ export const SET_RESULTS_PUBLISHED: TypedDocumentNode<
       passMark
       maxScore
       judgeCount
+      finalistCount
       resultsPublished
       resultsPublishedAt
       updatedAt
@@ -312,6 +322,7 @@ export interface PublicResult {
   institution: string;
   status: ParticipantStatus;
   score: number | null;
+  finalist: boolean;
 }
 
 export const RESULT_LOOKUP: TypedDocumentNode<
@@ -326,6 +337,7 @@ export const RESULT_LOOKUP: TypedDocumentNode<
         institution
         status
         score
+        finalist
       }
     }
   }

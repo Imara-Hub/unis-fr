@@ -36,6 +36,7 @@ import { ROLE_LABELS } from "@/lib/graphql/staff";
 import type { AppKey } from "@/lib/i18n";
 import { Camera, Check, Lock, Trophy, UserRound, Users } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { MARK_TYPES } from "@/lib/marks";
 
 type Section = "profile" | "password" | "competition" | "team";
 
@@ -462,11 +463,8 @@ function ScoringOverview({ rules: r }: { rules: ScoringRules }) {
     })),
     { key: "presence", text: String(r.presencePoints), share: r.presencePoints, color: "#C99A35" },
   ];
-  const penalties = [
-    { sign: "X", name: tx("Tajweed, waqf or ibtida mistake"), points: r.tajweedPenalty },
-    { sign: "I", name: tx("Tanbih (the judge taps the table)"), points: r.tanbihPenalty },
-    { sign: "●", name: tx("Fath (the judge reminds)"), points: r.fathPenalty },
-  ];
+  // Fath, Tanbih, Tajweed, Kusita: the order the judges mark them in.
+  const penalties = MARK_TYPES.map((t) => ({ sign: t.sign, name: `${t.name} · ${tx(t.rule)}`, points: t.penalty(r) }));
 
   return (
     <Stack gap="4">
@@ -532,6 +530,7 @@ function CompetitionForm({ settings, rules }: { settings: Settings; rules: Scori
   const total = rules.questions * rules.questionPoints + rules.presencePoints;
   const [passMark, setPassMark] = useState(String(settings.passMark));
   const [judgeCount, setJudgeCount] = useState(settings.judgeCount);
+  const [finalistCount, setFinalistCount] = useState(String(settings.finalistCount));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -540,7 +539,13 @@ function CompetitionForm({ settings, rules }: { settings: Settings; rules: Scori
 
   const mark = Number(passMark);
   const validMark = passMark.trim() !== "" && Number.isFinite(mark) && mark >= 0 && mark <= total;
-  const changed = mark !== settings.passMark || judgeCount !== settings.judgeCount || settings.maxScore !== total;
+  const finalists = Number(finalistCount);
+  const validFinalists = finalistCount.trim() !== "" && Number.isInteger(finalists) && finalists >= 0 && finalists <= 1000;
+  const changed =
+    mark !== settings.passMark ||
+    judgeCount !== settings.judgeCount ||
+    finalists !== settings.finalistCount ||
+    settings.maxScore !== total;
   const pct = validMark ? (mark / total) * 100 : 0;
 
   async function onSubmit(e: FormEvent) {
@@ -550,7 +555,7 @@ function CompetitionForm({ settings, rules }: { settings: Settings; rules: Scori
     setSaved(false);
     try {
       // The sheet always totals 100, so the maximum follows the rules.
-      await update({ variables: { input: { passMark: mark, maxScore: total, judgeCount } } });
+      await update({ variables: { input: { passMark: mark, maxScore: total, judgeCount, finalistCount: finalists } } });
       setSaved(true);
     } catch (err) {
       const apiError = readApiError(err);
@@ -636,11 +641,36 @@ function CompetitionForm({ settings, rules }: { settings: Settings; rules: Scori
           </Box>
         </Box>
 
+        {/* The final */}
+        <Box>
+          <Text fontWeight="semibold" color="brand.900">
+            {tx("Places in the final")}
+          </Text>
+          <Text fontSize="sm" color="fg.muted" mb="3">
+            {tx("The best of those who passed go to the final: highest score first. At the same score, by name A–Z. 0 = no final.")}
+          </Text>
+          <Flex align="center" gap="3" wrap="wrap">
+            <Input type="number" min={0} max={1000} step="1" w="24" fontSize="xl" fontWeight="bold" value={finalistCount} onChange={(e) => setFinalistCount(e.target.value)} aria-label={tx("Places in the final")} />
+            <Flex gap="1.5" wrap="wrap">
+              {[10, 20, 30].map((v) => (
+                <Button key={v} type="button" size="sm" variant={finalists === v ? "solid" : "outline"} colorPalette={finalists === v ? "brand" : "gray"} onClick={() => setFinalistCount(String(v))}>
+                  {v}
+                </Button>
+              ))}
+            </Flex>
+          </Flex>
+          {(fieldErrors.finalistCount || !validFinalists) && (
+            <Text color="fg.error" fontSize="sm" mt="1">
+              {fieldErrors.finalistCount ?? tx("Give a whole number between 0 and {n}.", { n: 1000 })}
+            </Text>
+          )}
+        </Box>
+
         <Text fontSize="sm" color="fg.muted">
           {tx("Saving updates every participant’s result immediately.")}
         </Text>
         <Flex gap="3" align="center">
-          <Button type="submit" colorPalette="brand" loading={loading} disabled={!changed || !validMark}>
+          <Button type="submit" colorPalette="brand" loading={loading} disabled={!changed || !validMark || !validFinalists}>
             {tx("Save")}
           </Button>
           {saved && !changed && <Saved />}

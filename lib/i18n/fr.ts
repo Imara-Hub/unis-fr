@@ -67,6 +67,7 @@ export const fr: Messages = {
     NOT_FOUND: "Introuvable. Il a peut-être été supprimé.",
     ENVELOPE_TAKEN: "Cette enveloppe a déjà été tirée.",
     NOT_DRAWN: "Ce participant n’a pas encore tiré d’enveloppe.",
+    SHEET_LOCKED: "Cette fiche a été envoyée et ne peut plus être modifiée.",
   },
 
   server: {
@@ -139,6 +140,7 @@ export const fr: Messages = {
   },
 
   results: {
+    finalist: "Qualifié(e) pour la finale",
     eyebrow: "Résultats de la Musabaqa",
     title: "Suis-je admis ?",
     subtitle: "Tapez le nom du participant tel qu’il a été donné à l’inscription.",

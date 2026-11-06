@@ -419,7 +419,7 @@ function LatestRegistrations({ isAdmin }: { isAdmin: boolean }) {
                       {p.institution} · {p.commune}
                     </Text>
                   </Box>
-                  {p.review === "APPROVED" ? <StatusBadge status={p.status} /> : <ReviewBadge review={p.review} />}
+                  {p.review === "APPROVED" ? <StatusBadge status={p.status} finalist={p.finalist} /> : <ReviewBadge review={p.review} />}
                 </NextLink>
               </Flex>
             ))}

@@ -68,6 +68,7 @@ export const en = {
     NOT_FOUND: "Not found. It may have been deleted.",
     ENVELOPE_TAKEN: "This envelope was already drawn.",
     NOT_DRAWN: "This participant has not drawn an envelope yet.",
+    SHEET_LOCKED: "This sheet was submitted and can no longer be changed.",
   } as Record<string, string>,
 
   // The server's English field messages, translated by their exact text.
@@ -141,6 +142,7 @@ export const en = {
   },
 
   results: {
+    finalist: "Going to the final",
     eyebrow: "Musabaqa results",
     title: "Did I pass?",
     subtitle: "Type the participant’s name as it was given at registration.",
