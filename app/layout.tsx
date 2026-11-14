@@ -1,13 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Amiri, Lateef, Open_Sans } from "next/font/google";
+import { Amiri, Lateef, Source_Sans_3, Source_Serif_4 } from "next/font/google";
 import type { ReactNode } from "react";
 import { Providers } from "./providers";
 
 // Fonts are downloaded at build time and served from our own site (no Google request in the browser).
-// One family, Open Sans, for text and numbers. The "display" copy only has the semibold
-// weight, so titles and big numbers written with fontFamily="display" are semibold wherever they are.
-const body = Open_Sans({ subsets: ["latin"], variable: "--font-body", display: "swap" });
-const display = Open_Sans({ subsets: ["latin"], weight: "600", variable: "--font-display", display: "swap" });
+// Adobe's Source pair, drawn to go together: Source Sans 3 for all text (clear on phones and
+// tablets, full French accents), Source Serif 4 for titles and big scores, a printed, formal touch.
+// The display copy only has the semibold weight, so text written with fontFamily="display" is
+// semibold wherever it is.
+const body = Source_Sans_3({ subsets: ["latin", "latin-ext"], variable: "--font-body", display: "swap" });
+const display = Source_Serif_4({ subsets: ["latin", "latin-ext"], weight: "600", variable: "--font-display", display: "swap" });
 // Lateef for every Arabic text in the app (mark names, surah names, labels…).
 const arabic = Lateef({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-arabic", display: "swap" });
 // Amiri stays only for the Bismillah (the ﷽ ligature on the login card, the mushaf, the stage envelope).
