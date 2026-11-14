@@ -48,20 +48,21 @@ const config = defineConfig({
           950: { value: "#21180A" },
         },
       },
-      // A little smaller than Chakra's defaults (16px base → 15px), titles reduced the most.
+      // A little bigger than Chakra's defaults (16px base → 17px): Source Sans is drawn smaller than
+      // most fonts at the same size, and the app is read on phones and on tablets at arm's length.
       fontSizes: {
-        "2xs": { value: "0.625rem" }, // 10px
-        xs: { value: "0.6875rem" }, // 11px
-        sm: { value: "0.8125rem" }, // 13px
-        md: { value: "0.9375rem" }, // 15px
-        lg: { value: "1.0625rem" }, // 17px
-        xl: { value: "1.1875rem" }, // 19px
-        "2xl": { value: "1.375rem" }, // 22px
-        "3xl": { value: "1.625rem" }, // 26px
-        "4xl": { value: "2rem" }, // 32px
-        "5xl": { value: "2.5rem" }, // 40px
-        "6xl": { value: "3.25rem" }, // 52px
-        "7xl": { value: "4rem" }, // 64px
+        "2xs": { value: "0.75rem" }, // 12px
+        xs: { value: "0.8125rem" }, // 13px
+        sm: { value: "0.9375rem" }, // 15px
+        md: { value: "1.0625rem" }, // 17px
+        lg: { value: "1.1875rem" }, // 19px
+        xl: { value: "1.3125rem" }, // 21px
+        "2xl": { value: "1.5rem" }, // 24px
+        "3xl": { value: "1.875rem" }, // 30px
+        "4xl": { value: "2.25rem" }, // 36px
+        "5xl": { value: "2.875rem" }, // 46px
+        "6xl": { value: "3.625rem" }, // 58px
+        "7xl": { value: "4.5rem" }, // 72px
       },
       fonts: {
         body: { value: "var(--font-body), system-ui, sans-serif" },
@@ -69,7 +70,7 @@ const config = defineConfig({
         display: { value: "var(--font-display), system-ui, sans-serif" },
         arabic: { value: "var(--font-arabic), 'Traditional Arabic', serif" },
         bismillah: { value: "var(--font-bismillah), 'Traditional Arabic', serif" },
-        // Phone numbers: the same font with equal-width digits (see globalCss), not a typewriter font.
+        // Phone numbers and codes: the text font, with equal-width digits (see globalCss), not a typewriter font.
         mono: { value: "var(--font-body), system-ui, sans-serif" },
       },
     },
@@ -170,8 +171,11 @@ const config = defineConfig({
     },
   },
   globalCss: {
-    // Upright, equal-width digits everywhere, so numbers line up in tables and tiles.
-    "html, body": { color: "fg", fontSize: "md", fontVariantNumeric: "lining-nums tabular-nums" },
+    // Normal (proportional) digits in text, so it reads like print, not a typewriter. Places where
+    // numbers must line up (tables, scores, counters) set tabular-nums themselves.
+    "html, body": { color: "fg", fontSize: "md", fontVariantNumeric: "lining-nums", textRendering: "optimizeLegibility" },
+    // Tables: equal-width digits so the columns line up.
+    "table, input[type=tel], input[type=number]": { fontVariantNumeric: "lining-nums tabular-nums" },
     // The glow the glass blurs: navy from the top corners, a touch of gold low down, on paper white.
     body: {
       bg: "#F2F3F8",

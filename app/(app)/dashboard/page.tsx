@@ -159,7 +159,6 @@ function EmptyState({ icon: Icon, title, text, action }: { icon: LucideIcon; tit
 
 // Blue banner with the gold lattice: today, the greeting, main actions.
 function Welcome({ user }: { user: User }) {
-  const firstName = user.name.split(" ")[0];
   const { tx, locale } = useI18n();
   const today = new Date().toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
@@ -195,8 +194,8 @@ function Welcome({ user }: { user: User }) {
           <Text fontSize="xs" fontWeight="semibold" letterSpacing="0.18em" textTransform="uppercase" color="gold.300">
             {today}
           </Text>
-          <Heading as="h1" fontFamily="display" fontSize={{ base: "2xl", md: "4xl" }} lineHeight="1.15">
-            {GREETING}, {firstName}
+          <Heading as="h1" fontFamily="display" fontSize={{ base: "xl", md: "2xl" }} lineHeight="1.2">
+            {GREETING}
           </Heading>
           <Text color="whiteAlpha.800" mt="1">
             {user.role === "ADMIN"
