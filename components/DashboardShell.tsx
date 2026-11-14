@@ -21,7 +21,7 @@ const NAV: { href: string; label: AppKey; icon: LucideIcon; roles: Role[] }[] = 
   { href: "/stage", label: "Live stage", icon: Mic, roles: ["ADMIN", "STAFF"] }, // watch the judging (read only)
   { href: "/registrations", label: "Registrations", icon: ClipboardCheck, roles: ["ADMIN"] }, // review queue
   { href: "/participants", label: "Participants", icon: Users, roles: ["ADMIN", "JUDGE", "STAFF"] },
-  { href: "/envelopes", label: "Envelopes", icon: Mail, roles: ["ADMIN", "JUDGE", "STAFF"] }, // judges prepare them
+  { href: "/envelopes", label: "Questions", icon: Mail, roles: ["ADMIN", "JUDGE", "STAFF"] }, // judges prepare them
   { href: "/registration-link", label: "Registration link", icon: Link2, roles: ["ADMIN"] },
   { href: "/team", label: "Team", icon: UserCog, roles: ["ADMIN"] },
   // Everyone: their own profile and password. The admin also sees competition and team settings.
@@ -29,6 +29,9 @@ const NAV: { href: string; label: AppKey; icon: LucideIcon; roles: Role[] }[] = 
 ];
 
 const ROLE_COLORS: Record<Role, string> = { ADMIN: "gold", JUDGE: "brand", STAFF: "gray" };
+
+// Width of the sidebar (208px): narrow, so pages like the judges' mushaf get the room.
+const SIDEBAR_W = "52";
 
 // Height of the top bar. The sidebar's logo block uses it too, so both line up.
 const BAR_H = "16";
@@ -84,9 +87,9 @@ function NavLinks({ role, onNavigate }: { role: Role; onNavigate?: () => void })
             asChild
             position="relative"
             align="center"
-            gap="3.5"
-            ps="4"
-            pe="3"
+            gap="3"
+            ps="3"
+            pe="2"
             py="2.5"
             rounded="lg"
             fontSize="sm"
@@ -135,10 +138,10 @@ function Sidebar({ role, onNavigate }: { role: Role; onNavigate?: () => void }) 
       </Box>
 
       {/* Same height as the top bar, so they read as one line. */}
-      <Flex position="relative" align="center" h={BAR_H} flexShrink={0} px="5" borderBottomWidth="1px" borderBottomColor="whiteAlpha.100">
-        <Logo />
+      <Flex position="relative" align="center" h={BAR_H} flexShrink={0} px="4" borderBottomWidth="1px" borderBottomColor="whiteAlpha.100">
+        <Logo compact />
       </Flex>
-      <Box position="relative" px="3" pt="5">
+      <Box position="relative" px="2.5" pt="5">
         <NavLinks role={role} onNavigate={onNavigate} />
       </Box>
     </Flex>
@@ -247,7 +250,126 @@ function UserMenu({ user, onLogout, loggingOut }: { user: User; onLogout: () => 
   );
 }
 
-export function DashboardShell({
+// The judges' menu as tabs in the top bar: icon + label, a gold underline under the open page.
+// Inline beside the logo on computers; its own scrollable row under the bar on tablets and phones.
+function NavTabs({ role }: { role: Role }) {
+  const pathname = usePathname();
+  const { tx } = useI18n();
+  return (
+    <Flex as="nav" aria-label={tx("Main")} gap={{ base: "1", lg: "1.5" }} h="full" align="stretch" overflowX="auto" css={{ scrollbarWidth: "none" }}>
+      {NAV.filter((item) => item.roles.includes(role)).map((item) => {
+        const active = isActive(item.href, pathname);
+        const Icon = item.icon;
+        return (
+          <Flex
+            key={item.href}
+            asChild
+            position="relative"
+            align="center"
+            gap="2"
+            px="3"
+            flexShrink={0}
+            fontSize="sm"
+            fontWeight={active ? "semibold" : "medium"}
+            color={active ? "brand.900" : "fg.muted"}
+            whiteSpace="nowrap"
+            transition="color 0.15s"
+            _hover={{ color: "brand.900" }}
+            _focusVisible={{ outline: "2px solid", outlineColor: "brand.400", outlineOffset: "-2px", rounded: "md" }}
+            // Gold underline, sitting on the bar's bottom edge.
+            _after={{
+              content: '""',
+              position: "absolute",
+              insetX: "2",
+              bottom: "0",
+              h: "3px",
+              roundedTop: "full",
+              bg: "gold.400",
+              transform: active ? "scaleX(1)" : "scaleX(0)",
+              transition: "transform 0.2s ease-out",
+            }}
+          >
+            <NextLink href={item.href} aria-current={active ? "page" : undefined}>
+              <Box as="span" display="inline-flex" color={active ? "gold.600" : "currentColor"}>
+                <Icon size={18} strokeWidth={1.75} aria-hidden />
+              </Box>
+              {tx(item.label)}
+            </NextLink>
+          </Flex>
+        );
+      })}
+    </Flex>
+  );
+}
+
+// Judges: no sidebar, the whole width goes to the page (the mushaf needs it); the menu lives in the top bar.
+function JudgeShell({
+  user,
+  live,
+  onLogout,
+  loggingOut,
+  children,
+}: {
+  user: User;
+  live: boolean;
+  onLogout: () => void;
+  loggingOut: boolean;
+  children: ReactNode;
+}) {
+  const pathname = usePathname();
+  return (
+    <Flex direction="column" minH="100dvh">
+      <Box
+        as="header"
+        position="sticky"
+        top="0"
+        zIndex="docked"
+        bg="rgba(255,255,255,0.82)"
+        backdropFilter="blur(16px) saturate(170%)"
+        borderBottomWidth="1px"
+        borderBottomColor="blackAlpha.100"
+        // A thin gold line along the top, the same accent as the menus.
+        borderTopWidth="2px"
+        borderTopColor="gold.400"
+      >
+        <Flex align="center" gap={{ base: "2", md: "4" }} px={{ base: "3", md: "6" }} h={BAR_H}>
+          <Logo compact dark />
+          <Box h="7" w="1px" bg="blackAlpha.100" display={{ base: "none", lg: "block" }} />
+          <Box display={{ base: "none", lg: "flex" }} h="full">
+            <NavTabs role={user.role} />
+          </Box>
+          <Spacer />
+          <LivePill live={live} />
+          <LanguageSwitcher />
+          <Box h="7" w="1px" bg="blackAlpha.100" display={{ base: "none", sm: "block" }} />
+          <UserMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
+        </Flex>
+        <Box display={{ base: "block", lg: "none" }} h="11" px={{ base: "1", md: "3" }} borderTopWidth="1px" borderTopColor="blackAlpha.50">
+          <NavTabs role={user.role} />
+        </Box>
+      </Box>
+
+      <Box as="main" flex="1" minW="0" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }} w="full">
+        <Box key={pathname} animation="fade-in 0.3s ease-out" _motionReduce={{ animation: "none" }}>
+          {children}
+        </Box>
+      </Box>
+    </Flex>
+  );
+}
+
+export function DashboardShell(props: {
+  user: User;
+  live: boolean;
+  onLogout: () => void;
+  loggingOut: boolean;
+  children: ReactNode;
+}) {
+  if (props.user.role === "JUDGE") return <JudgeShell {...props} />;
+  return <SidebarShell {...props} />;
+}
+
+function SidebarShell({
   user,
   live,
   onLogout,
@@ -268,13 +390,13 @@ export function DashboardShell({
 
   return (
     <Flex minH="100dvh">
-      {/* Sidebar (with the logo) on tablets and computers, full height */}
-      <Box as="aside" display={{ base: "none", md: "block" }} w="64" flexShrink={0} position="sticky" top="0" h="100dvh">
+      {/* Sidebar (with the logo) on computers, full height. Tablets and phones: the menu button. */}
+      <Box as="aside" display={{ base: "none", xl: "block" }} w={SIDEBAR_W} flexShrink={0} position="sticky" top="0" h="100dvh">
         <Sidebar role={user.role} />
       </Box>
 
       <Flex direction="column" flex="1" minW="0">
-        {/* Top bar: page name, live status and account menu. On phones also the menu button. */}
+        {/* Top bar: page name, live status and account menu. On tablets and phones also the menu button. */}
         <Flex
           as="header"
           align="center"
@@ -292,7 +414,7 @@ export function DashboardShell({
           zIndex="docked"
         >
           <IconButton
-            display={{ md: "none" }}
+            display={{ xl: "none" }}
             aria-label={tx("Open menu")}
             variant="ghost"
             size="sm"
@@ -301,10 +423,10 @@ export function DashboardShell({
           >
             <MenuIcon size={20} aria-hidden />
           </IconButton>
-          <Box display={{ md: "none" }}>
+          <Box display={{ xl: "none" }}>
             <Logo compact dark />
           </Box>
-          <Heading as="p" display={{ base: "none", md: "block" }} fontFamily="display" fontSize="xl" color="brand.900">
+          <Heading as="p" display={{ base: "none", xl: "block" }} fontFamily="display" fontSize="xl" color="brand.900">
             {pageTitle}
           </Heading>
           <Spacer />
@@ -314,7 +436,7 @@ export function DashboardShell({
           <UserMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
         </Flex>
 
-        {/* Same menu as a drawer on phones */}
+        {/* Same menu as a drawer on tablets and phones */}
         <Drawer.Root open={menuOpen} onOpenChange={(e) => setMenuOpen(e.open)} placement="start" size="xs">
           <Portal>
             <Drawer.Backdrop />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@chakra-ui/react";
+import { Badge, HStack } from "@chakra-ui/react";
 import type { ParticipantStatus, ReviewStatus } from "@/lib/graphql/participants";
 import type { AppKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n";
@@ -13,12 +13,30 @@ export const STATUS_LABELS: Record<ParticipantStatus, AppKey> = {
 
 const COLORS: Record<ParticipantStatus, string> = { PENDING: "gray", PASSED: "green", FAILED: "red" };
 
-export function StatusBadge({ status, size = "sm" }: { status: ParticipantStatus; size?: "sm" | "md" | "lg" }) {
+// Passed / Failed / Not judged, and a gold "Final" next to it for those going to the final.
+export function StatusBadge({
+  status,
+  finalist = false,
+  size = "sm",
+}: {
+  status: ParticipantStatus;
+  finalist?: boolean;
+  size?: "sm" | "md" | "lg";
+}) {
   const { tx } = useI18n();
-  return (
+  const badge = (
     <Badge colorPalette={COLORS[status]} size={size} variant={status === "PENDING" ? "outline" : "solid"}>
       {tx(STATUS_LABELS[status])}
     </Badge>
+  );
+  if (!finalist) return badge;
+  return (
+    <HStack gap="1" display="inline-flex">
+      {badge}
+      <Badge colorPalette="yellow" bg="gold.400" color="brand.900" size={size} variant="solid">
+        {tx("Final")}
+      </Badge>
+    </HStack>
   );
 }
 

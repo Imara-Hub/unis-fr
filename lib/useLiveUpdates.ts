@@ -18,10 +18,14 @@ export function useLiveUpdates() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let opened = false;
 
-    // Many changes in a row (a judge typing fast) → one reload.
+    // Many changes in a row → one reload, at most 300 ms after the first. Not pushed back by each
+    // new change: with 4 judges marking at once the changes never stop, and the screen would wait.
     const refresh = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => void client.refetchQueries({ include: "active" }), 300);
+      if (timer !== undefined) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        void client.refetchQueries({ include: "active" });
+      }, 300);
     };
 
     const open = () => {
@@ -40,11 +44,14 @@ export function useLiveUpdates() {
       es.onerror = () => setConnected(false); // the browser reconnects by itself
       es.addEventListener("next", refresh);
       es.addEventListener("message", refresh);
-      // The server ended the stream (e.g. logged out): stop instead of reconnecting forever.
+      // The server ended the stream (logged out, or the admin deactivated or removed this account):
+      // stop instead of reconnecting forever, and reload once. The login check (ME) then finds
+      // nobody logged in and the layout goes to the login page, instead of leaving old data on screen.
       es.addEventListener("complete", () => {
         es.close();
         if (source === es) source = null;
         setConnected(false);
+        void client.refetchQueries({ include: "active" });
       });
     };
 
@@ -66,6 +73,7 @@ export function useLiveUpdates() {
 
     return () => {
       clearTimeout(timer);
+      timer = undefined;
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", close);
       close();

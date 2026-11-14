@@ -4,19 +4,21 @@ import type { ParticipantDetail } from "./participants";
 // The paper "ALAMA" sheet: numbers come from the server so screens and results always agree.
 export interface ScoringRules {
   questions: number;
-  questionPoints: number;
-  questionsWeight: number;
-  sautiMax: number;
+  questionPoints: number; // 33: the recitation plus its third of the sauti
+  sautiMax: number; // 5, given once, a third inside each question
+  presencePoints: number; // 1: 3 × 33 + 1 = 100
   fathLimit: number;
   fathPenalty: number;
   tanbihPenalty: number;
   tajweedPenalty: number;
+  kusitaPenalty: number;
 }
 
 export interface Marks {
   fath: number; // ● reminded by the judge
   tanbih: number; // I judge tapped the table
   tajweed: number; // X tajweed / waqf / ibtida mistake
+  kusita: number; // S the participant hesitates
 }
 
 export interface QuestionMarks extends Marks {
@@ -29,6 +31,7 @@ export interface JudgeSheet {
   judge: { id: string; name: string } | null;
   questions: QuestionMarks[];
   sauti: number | null;
+  presence: boolean | null; // the judge's choice when 2+ questions are deleted; null when given by itself
   total: number | null;
   submitted: boolean;
   submittedAt: string | null;
@@ -60,10 +63,12 @@ const SHEET_FIELDS = gql`
       fath
       tanbih
       tajweed
+      kusita
       score
       deleted
     }
     sauti
+    presence
     total
     submitted
     submittedAt
@@ -89,8 +94,17 @@ const ENVELOPE_FIELDS = gql`
 const JUDGING_PARTICIPANT_FIELDS = gql`
   fragment JudgingParticipantFields on Participant {
     id
+    number
     fullName
     phone
+    registeredBy
+    contact {
+      name
+      phone
+      relation
+      institutionType
+      institutionName
+    }
     institution
     commune
     province
@@ -125,12 +139,13 @@ export const SCORING_RULES: TypedDocumentNode<{ scoringRules: ScoringRules }> = 
     scoringRules {
       questions
       questionPoints
-      questionsWeight
       sautiMax
+      presencePoints
       fathLimit
       fathPenalty
       tanbihPenalty
       tajweedPenalty
+      kusitaPenalty
     }
   }
 `;
@@ -178,7 +193,7 @@ export const PARTICIPANT_SHEETS: TypedDocumentNode<
 
 export const SAVE_SHEET: TypedDocumentNode<
   { saveSheet: JudgeSheet },
-  { input: { participantId: string; questions: Marks[]; sauti: number | null; submit: boolean } }
+  { input: { participantId: string; questions: Marks[]; sauti: number | null; presence: boolean | null; submit: boolean } }
 > = gql`
   mutation SaveSheet($input: SaveSheetInput!) {
     saveSheet(input: $input) {
@@ -214,6 +229,15 @@ export const CREATE_ENVELOPE: TypedDocumentNode<{ createEnvelope: Envelope }, { 
   ${ENVELOPE_FIELDS}
 `;
 
+export const CREATE_RANDOM_ENVELOPES: TypedDocumentNode<{ createRandomEnvelopes: Envelope[] }, { count: number }> = gql`
+  mutation CreateRandomEnvelopes($count: Int!) {
+    createRandomEnvelopes(count: $count) {
+      ...EnvelopeFields
+    }
+  }
+  ${ENVELOPE_FIELDS}
+`;
+
 export const UPDATE_ENVELOPE: TypedDocumentNode<{ updateEnvelope: Envelope }, { id: string; questions: string[] }> = gql`
   mutation UpdateEnvelope($id: ID!, $questions: [String!]!) {
     updateEnvelope(id: $id, input: { questions: $questions }) {
@@ -226,6 +250,13 @@ export const UPDATE_ENVELOPE: TypedDocumentNode<{ updateEnvelope: Envelope }, { 
 export const DELETE_ENVELOPE: TypedDocumentNode<{ deleteEnvelope: boolean }, { id: string }> = gql`
   mutation DeleteEnvelope($id: ID!) {
     deleteEnvelope(id: $id)
+  }
+`;
+
+// Every envelope not drawn yet; returns how many were deleted (drawn ones stay).
+export const DELETE_UNUSED_ENVELOPES: TypedDocumentNode<{ deleteUnusedEnvelopes: number }, Record<string, never>> = gql`
+  mutation DeleteUnusedEnvelopes {
+    deleteUnusedEnvelopes
   }
 `;
 
@@ -246,15 +277,26 @@ export const DRAW_ENVELOPE: TypedDocumentNode<{ drawEnvelope: { updatedAt: strin
 `;
 
 // Same rules as the server (lib/sheet.ts there), for the live preview while marking.
-export function questionScore(q: Marks, r: ScoringRules) {
+// A question of 33 = 31.33 for the recitation (mistakes come off it, never below 0) + a third of
+// the sauti (1.67 at most). The 3rd Fath deletes it: 0, its share of the sauti included.
+function questionPoints(q: Marks, sauti: number | null, r: ScoringRules) {
   if (q.fath >= r.fathLimit) return 0;
-  return Math.max(0, r.questionPoints - q.fath * r.fathPenalty - q.tanbih * r.tanbihPenalty - q.tajweed * r.tajweedPenalty);
+  const recitation = r.questionPoints - r.sautiMax / r.questions;
+  const lost =
+    q.fath * r.fathPenalty + q.tanbih * r.tanbihPenalty + q.tajweed * r.tajweedPenalty + (q.kusita ?? 0) * r.kusitaPenalty;
+  return Math.max(0, recitation - lost) + (sauti ?? 0) / r.questions;
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// One question out of 33 (sauti not given yet counts as 0).
+export const questionScore = (q: Marks, sauti: number | null, r: ScoringRules) => round2(questionPoints(q, sauti, r));
+
+// One judge's total out of 100: the questions plus the presence point, always given by itself.
+// Null until sauti is given.
 export function sheetTotal(questions: Marks[], sauti: number | null, r: ScoringRules) {
   if (sauti === null) return null;
-  const raw = questions.reduce((sum, q) => sum + questionScore(q, r), 0);
-  return Math.round(((raw * r.questionsWeight) / (r.questions * r.questionPoints) + sauti) * 100) / 100;
+  return round2(questions.reduce((sum, q) => sum + questionPoints(q, sauti, r), 0) + r.presencePoints);
 }
 
 export interface QueueParticipant {
@@ -269,6 +311,7 @@ export interface QueueParticipant {
   registeredAt: string;
   score: number | null;
   status: "PENDING" | "PASSED" | "FAILED";
+  finalist: boolean;
   sheetsSubmitted: number;
   envelope: { id: string; number: number } | null;
 }
@@ -289,6 +332,7 @@ export const STAGE_QUEUE: TypedDocumentNode<{ participants: QueueParticipant[] }
       registeredAt
       score
       status
+      finalist
       sheetsSubmitted
       envelope {
         id

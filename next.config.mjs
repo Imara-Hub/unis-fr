@@ -23,6 +23,22 @@ const nextConfig = {
   async redirects() {
     return [{ source: "/", destination: "/dashboard", permanent: false }];
   },
+  // Basic hardening on every page: no framing by other sites (clickjacking on the judging desk),
+  // no MIME sniffing, no full URLs (registration and stage-screen tokens) leaked to other sites,
+  // and no camera/mic/location. Screen wake lock stays allowed for the stage screen.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

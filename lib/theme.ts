@@ -68,6 +68,7 @@ const config = defineConfig({
         heading: { value: "var(--font-body), system-ui, sans-serif" },
         display: { value: "var(--font-display), system-ui, sans-serif" },
         arabic: { value: "var(--font-arabic), 'Traditional Arabic', serif" },
+        bismillah: { value: "var(--font-bismillah), 'Traditional Arabic', serif" },
         // Phone numbers: the same font with equal-width digits (see globalCss), not a typewriter font.
         mono: { value: "var(--font-body), system-ui, sans-serif" },
       },

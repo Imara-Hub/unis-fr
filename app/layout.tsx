@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Amiri, Open_Sans } from "next/font/google";
+import { Amiri, Lateef, Open_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 import { Providers } from "./providers";
 
@@ -8,7 +8,10 @@ import { Providers } from "./providers";
 // weight, so titles and big numbers written with fontFamily="display" are semibold wherever they are.
 const body = Open_Sans({ subsets: ["latin"], variable: "--font-body", display: "swap" });
 const display = Open_Sans({ subsets: ["latin"], weight: "600", variable: "--font-display", display: "swap" });
-const arabic = Amiri({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-arabic", display: "swap" });
+// Lateef for every Arabic text in the app (mark names, surah names, labels…).
+const arabic = Lateef({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-arabic", display: "swap" });
+// Amiri stays only for the Bismillah (the ﷽ ligature on the login card, the mushaf, the stage envelope).
+const bismillah = Amiri({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-bismillah", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Musabaqa", template: "%s · Musabaqa" },
@@ -23,7 +26,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html
       lang="fr"
       suppressHydrationWarning
-      className={`${display.variable} ${body.variable} ${arabic.variable}`}
+      className={`${display.variable} ${body.variable} ${arabic.variable} ${bismillah.variable}`}
     >
       <body>
         <Providers>{children}</Providers>

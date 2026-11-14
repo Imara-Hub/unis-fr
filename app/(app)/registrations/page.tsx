@@ -2,12 +2,13 @@
 
 import { useQuery } from "@apollo/client/react";
 import { Box, Button, Card, Flex, Input, InputGroup, Skeleton, Stack, Text } from "@chakra-ui/react";
-import { Search } from "lucide-react";
+import { FileText, ListChecks, Search } from "lucide-react";
 import NextLink from "next/link";
 import { useMemo, useState } from "react";
 import { AdminOnly } from "@/components/AdminOnly";
 import { Delayed } from "@/components/Delayed";
 import { ErrorAlert } from "@/components/ErrorAlert";
+import { NumberTag } from "@/components/NumberTag";
 import { PageHeader } from "@/components/PageHeader";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { ReviewBadge } from "@/components/StatusBadge";
@@ -15,7 +16,8 @@ import { ageOf, formatDateTime } from "@/lib/dates";
 import { readApiError } from "@/lib/errors";
 import { PARTICIPANT_COUNTS, PARTICIPANTS, type ParticipantRow, type ReviewStatus } from "@/lib/graphql/participants";
 import type { AppKey } from "@/lib/i18n";
-import { formatPhone } from "@/lib/phone";
+import { formatPhone, reachPhone } from "@/lib/phone";
+import { useRegistrar } from "@/components/Registrar";
 import { useI18n } from "@/lib/i18n";
 
 const TABS: { review: ReviewStatus; label: AppKey; count: "awaitingReview" | "rejected" | "total"; dot: string }[] = [
@@ -52,13 +54,18 @@ function Registrations() {
         p.fullName.toLowerCase().includes(q) ||
         p.institution.toLowerCase().includes(q) ||
         p.commune.toLowerCase().includes(q) ||
-        (digits.length >= 3 && p.phone.includes(digits)),
+        // Everyone a parent or a markaz registered: by its name or phone.
+        Boolean(p.contact?.name.toLowerCase().includes(q)) ||
+        Boolean(p.contact?.institutionName?.toLowerCase().includes(q)) ||
+        (digits.length >= 3 && [p.phone, p.contact?.phone].some((phone) => phone?.includes(digits))),
     );
     // The queue in arrival order (first come, first reviewed); the decided lists newest first.
     return review === "PENDING_REVIEW"
       ? [...all].sort((a, b) => a.registeredAt.localeCompare(b.registeredAt))
       : [...all].sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
   }, [loaded, searchText, review]);
+  // The oldest waiting registration: where "Review one by one" starts.
+  const firstWaiting = review === "PENDING_REVIEW" && !searchText.trim() ? (shown[0]?.id ?? null) : null;
 
   return (
     <>
@@ -66,6 +73,38 @@ function Registrations() {
         title={tx("Registrations")}
         description={tx("Check each registration against the terms and conditions, then approve or reject it. Only approved people appear for the judges and staff and can be called on stage.")}
       />
+
+      {/* The quickest way through the queue: each form in turn, oldest first, the next opens after a decision. */}
+      {firstWaiting && (
+        <Flex
+          mb="4"
+          p={{ base: "4", md: "5" }}
+          gap="4"
+          align={{ base: "stretch", sm: "center" }}
+          direction={{ base: "column", sm: "row" }}
+          rounded="xl"
+          bg="orange.50"
+          borderWidth="1px"
+          borderColor="orange.200"
+        >
+          <Box flex="1">
+            <Text fontWeight="semibold" color="brand.900">
+              {(c?.awaitingReview ?? shown.length) === 1
+                ? tx("1 registration is waiting for review")
+                : tx("{n} registrations are waiting for review", { n: c?.awaitingReview ?? shown.length })}
+            </Text>
+            <Text fontSize="sm" color="fg.muted">
+              {tx("Read each form and approve or reject it: the next one opens by itself.")}
+            </Text>
+          </Box>
+          <Button asChild colorPalette="brand" size="lg" flexShrink={0}>
+            <NextLink href={`/forms/${firstWaiting}?review=1`}>
+              <ListChecks size={18} aria-hidden />
+              {tx("Review one by one")}
+            </NextLink>
+          </Button>
+        </Flex>
+      )}
 
       <Card.Root overflow="hidden">
         <Flex gap="1" overflowX="auto" role="tablist" aria-label={tx("Review status")} px={{ base: "2", md: "4" }} borderBottomWidth="1px">
@@ -118,7 +157,7 @@ function Registrations() {
             <Input
               size="sm"
               bg="white"
-              placeholder={tx("Search name, phone, halaqa, commune")}
+              placeholder={tx("Search name, phone, halaqa, commune, who registered")}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />
@@ -160,6 +199,7 @@ function Registrations() {
 
 function RegistrationRow({ participant: p }: { participant: ParticipantRow }) {
   const { tx } = useI18n();
+  const registrar = useRegistrar().who(p);
   return (
     <Flex
       gap="3"
@@ -173,6 +213,7 @@ function RegistrationRow({ participant: p }: { participant: ParticipantRow }) {
       <ParticipantPhoto path={p.photoUrl} size="thumb" />
       <Stack gap="0.5" flex="1" minW="0">
         <Flex gap="2" align="center" wrap="wrap">
+          <NumberTag number={p.number} />
           <Text fontWeight="semibold" color="brand.900" truncate>
             {p.fullName}
           </Text>
@@ -183,12 +224,26 @@ function RegistrationRow({ participant: p }: { participant: ParticipantRow }) {
           {p.commune}, {p.province}
         </Text>
         <Text fontSize="xs" color="fg.muted">
-          {formatPhone(p.phone)} · {tx("registered {date}", { date: formatDateTime(p.registeredAt) })}
+          {formatPhone(reachPhone(p))} · {tx("registered {date}", { date: formatDateTime(p.registeredAt) })}
         </Text>
+        {registrar && (
+          <Text fontSize="xs" color="brand.700" truncate>
+            {tx("Registered by {who}", { who: registrar })}
+          </Text>
+        )}
       </Stack>
-      <Button asChild size="sm" colorPalette="brand" variant={p.review === "PENDING_REVIEW" ? "solid" : "outline"}>
-        <NextLink href={`/participants/${p.id}`}>{p.review === "PENDING_REVIEW" ? tx("Review") : tx("Open")}</NextLink>
-      </Button>
+      <Flex gap="2" flexShrink={0}>
+        {/* The registration as the paper form: to read it as on paper, print it or save it as PDF. */}
+        <Button asChild size="sm" variant="outline" colorPalette="brand">
+          <NextLink href={p.review === "PENDING_REVIEW" ? `/forms/${p.id}?review=1` : `/forms/${p.id}`}>
+            <FileText size={15} aria-hidden />
+            {tx("Form")}
+          </NextLink>
+        </Button>
+        <Button asChild size="sm" colorPalette="brand" variant={p.review === "PENDING_REVIEW" ? "solid" : "outline"}>
+          <NextLink href={`/participants/${p.id}`}>{p.review === "PENDING_REVIEW" ? tx("Review") : tx("Open")}</NextLink>
+        </Button>
+      </Flex>
     </Flex>
   );
 }

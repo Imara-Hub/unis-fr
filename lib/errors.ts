@@ -1,4 +1,4 @@
-import { CombinedGraphQLErrors } from "@apollo/client";
+import { CombinedGraphQLErrors, ServerError, ServerParseError } from "@apollo/client";
 import { localizeError } from "@/lib/i18n/core";
 
 // English messages for the API's stable error codes. The other languages: lib/i18n (errors).
@@ -15,14 +15,19 @@ const MESSAGES: Record<string, string> = {
   TERMS_CHANGED: "The terms and conditions were just updated. Read them again and accept to continue.",
   REVIEW_LOCKED: "This participant was already called on stage, so the registration can no longer be rejected.",
   NOT_APPROVED: "This registration is not approved yet.",
-  ALREADY_REGISTERED: "This phone number is already registered.",
+  ALREADY_REGISTERED: "This person is already registered (same name and date of birth).",
   INVALID_PHOTO: "The photo must be a JPG or PNG image of at most 2 MB.",
   INVALID_ID_DOCUMENT: "The ID document must be a JPG or PNG photo of at most 2 MB.",
   NOT_FOUND: "Not found. It may have been deleted.",
   ENVELOPE_TAKEN: "This envelope was already drawn.",
   NOT_DRAWN: "This participant has not drawn an envelope yet.",
+  SHEET_LOCKED: "This sheet was submitted and can no longer be changed.",
+  ALREADY_RECITED: "This participant has already recited.",
+  PANEL_COMPLETE: "All the judges already submitted for this participant: the score is final.",
   VALIDATION_FAILED: "Please check the highlighted fields.",
   CSRF_FAILED: "Request blocked for security reasons. Reload the page.",
+  SERVER_UNAVAILABLE: "The server is not answering right now. Try again in a moment.",
+  HTTP_ERROR: "The server refused the request. Reload the page and try again.",
 };
 
 export interface ApiError {
@@ -50,7 +55,15 @@ export function apiErrorFrom(first: GraphQLErrorLike | undefined, overrides: Rec
 }
 
 // Turns any Apollo error into { code, message, fields } for the UI.
+// An answer that is not GraphQL (an HTML page from a proxy in front of the API) gets its own code:
+// a server error or "busy" is SERVER_UNAVAILABLE (try again later), anything else HTTP_ERROR (a "no"
+// to show). No code at all means the server could not be reached: no connection.
 export function readApiError(error: unknown, overrides: Record<string, string> = {}): ApiError {
   if (CombinedGraphQLErrors.is(error)) return apiErrorFrom(error.errors[0], overrides);
+  if (ServerError.is(error) || ServerParseError.is(error)) {
+    const status = error.statusCode;
+    const busy = status >= 500 || status === 408 || status === 429;
+    return apiErrorFrom({ message: "", extensions: { code: busy ? "SERVER_UNAVAILABLE" : "HTTP_ERROR" } }, overrides);
+  }
   return localizeError(NETWORK_ERROR);
 }

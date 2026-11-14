@@ -12,6 +12,8 @@ import { readApiError } from "@/lib/errors";
 import { PARTICIPANT_SHEETS, STAGE, STAGE_QUEUE, type JudgeSheet } from "@/lib/graphql/judging";
 import { PARTICIPANT_COUNTS } from "@/lib/graphql/participants";
 import { useI18n } from "@/lib/i18n";
+import { MARK_TYPES } from "@/lib/marks";
+import { MarkName } from "@/components/MarkName";
 
 // Admin and staff watch the competition live: who is reciting, the questions they drew and each
 // judge's sheet as it is being marked. Only the judges run the stage (call, draw, mark).
@@ -95,7 +97,7 @@ function LiveSheets({ participantId, judgeCount, score }: { participantId: strin
           </Text>
         </Text>
       </Flex>
-      <SimpleGrid columns={{ base: 1, md: 2, xl: 4 }} gap="3">
+      <SimpleGrid columns={{ base: 1, md: 2 }} gap="3">
         {sheets.map((s) => (
           <LiveSheet key={s.id} sheet={s} />
         ))}
@@ -109,10 +111,11 @@ function LiveSheets({ participantId, judgeCount, score }: { participantId: strin
   );
 }
 
+// One judge's sheet: each question with its marks by name (Fath, Tanbih, Tajweed, Kusita) and points.
 function LiveSheet({ sheet: s }: { sheet: JudgeSheet }) {
   const { tx } = useI18n();
   return (
-    <Stack gap="2" p="4" rounded="xl" borderWidth="1px" bg={s.submitted ? "white" : "bg.subtle"}>
+    <Stack gap="3" p="4" rounded="xl" borderWidth="1px" bg={s.submitted ? "white" : "bg.subtle"}>
       <Flex justify="space-between" align="center" gap="2">
         <Text fontWeight="semibold" color="brand.900" truncate>
           {s.judge?.name ?? tx("Judge")}
@@ -120,20 +123,40 @@ function LiveSheet({ sheet: s }: { sheet: JudgeSheet }) {
         {s.submitted ? <Badge colorPalette="green">{tx("Submitted")}</Badge> : <Badge colorPalette="gray">{tx("Marking…")}</Badge>}
       </Flex>
       <Table.Root size="sm" variant="line">
+        <Table.Header>
+          <Table.Row>
+            <Table.ColumnHeader px="1" />
+            {MARK_TYPES.map((t) => (
+              <Table.ColumnHeader key={t.kind} px="1" textAlign="center" fontSize="xs" color={`${t.palette}.700`}>
+                <MarkName mark={t} />
+              </Table.ColumnHeader>
+            ))}
+            <Table.ColumnHeader px="1" textAlign="end" fontSize="xs">
+              {tx("Points")}
+            </Table.ColumnHeader>
+          </Table.Row>
+        </Table.Header>
         <Table.Body>
           {s.questions.map((q, i) => (
-            <Table.Row key={i}>
-              <Table.Cell px="1">{tx("Q{n}", { n: i + 1 })}</Table.Cell>
-              <Table.Cell px="1" color="fg.muted" fontSize="xs">
-                X{q.tajweed} I{q.tanbih} ●{q.fath}
+            <Table.Row key={i} bg={q.deleted ? "red.50" : undefined}>
+              <Table.Cell px="1" fontWeight="semibold" whiteSpace="nowrap">
+                {tx("Q{n}", { n: i + 1 })}
               </Table.Cell>
-              <Table.Cell px="1" textAlign="end" fontWeight="semibold" color={q.deleted ? "red.600" : undefined}>
+              {MARK_TYPES.map((t) => {
+                const n = q[t.kind] ?? 0;
+                return (
+                  <Table.Cell key={t.kind} px="1" textAlign="center" fontVariantNumeric="tabular-nums" color={n ? `${t.palette}.700` : "fg.subtle"} fontWeight={n ? "bold" : "normal"}>
+                    {n}
+                  </Table.Cell>
+                );
+              })}
+              <Table.Cell px="1" textAlign="end" fontWeight="semibold" whiteSpace="nowrap" color={q.deleted ? "red.600" : undefined}>
                 {q.deleted ? tx("Deleted") : q.score}
               </Table.Cell>
             </Table.Row>
           ))}
           <Table.Row>
-            <Table.Cell px="1" colSpan={2}>
+            <Table.Cell px="1" colSpan={MARK_TYPES.length + 1}>
               Sauti
             </Table.Cell>
             <Table.Cell px="1" textAlign="end" fontWeight="semibold">
@@ -193,7 +216,7 @@ function Order({ onStageId }: { onStageId: string | null }) {
                             {p.score}
                           </Text>
                         )}
-                        <StatusBadge status={p.status} />
+                        <StatusBadge status={p.status} finalist={p.finalist} />
                       </Flex>
                     )}
                   </Flex>

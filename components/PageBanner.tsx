@@ -3,6 +3,48 @@ import type { ReactNode } from "react";
 import { StarLattice } from "@/components/brand/Octagram";
 
 export type BannerStat = { label: string; value: number | string | undefined };
+// A count shown as a round progress ring: value out of total.
+export type BannerRing = { label: string; value: number | undefined; total: number; color: string };
+
+function Ring({ label, value, total, color }: BannerRing) {
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  const part = value !== undefined && total > 0 ? Math.min(value / total, 1) : 0;
+  return (
+    <Flex align="center" gap="4" px="4" py="3" pe="6" rounded="full" bg="whiteAlpha.100" borderWidth="1px" borderColor="whiteAlpha.200" backdropFilter="blur(10px)">
+      <Box position="relative" w="20" h="20" flexShrink={0}>
+        <svg viewBox="0 0 80 80" width="100%" height="100%" aria-hidden style={{ transform: "rotate(-90deg)" }}>
+          <circle cx="40" cy="40" r={r} fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="7" />
+          <circle
+            cx="40"
+            cy="40"
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={c * (1 - part)}
+            style={{ transition: "stroke-dashoffset 0.6s ease" }}
+          />
+        </svg>
+        <Flex position="absolute" inset="0" align="center" justify="center">
+          <Text fontFamily="display" fontSize="2xl" fontWeight="bold" lineHeight="1" color="white" fontVariantNumeric="tabular-nums">
+            {value ?? "·"}
+          </Text>
+        </Flex>
+      </Box>
+      <Box>
+        <Text fontSize="sm" fontWeight="semibold" color="white" letterSpacing="0.06em" textTransform="uppercase">
+          {label}
+        </Text>
+        <Text fontSize="xs" color="whiteAlpha.700" fontVariantNumeric="tabular-nums">
+          {value !== undefined && total > 0 ? `${Math.round(part * 100)}% · ${value} / ${total}` : "—"}
+        </Text>
+      </Box>
+    </Flex>
+  );
+}
 // A state shown as a pill at the top, e.g. "Registration open" (good) / "Registration closed".
 export type BannerStatus = { label: string; tone: "good" | "bad" | "neutral" };
 
@@ -43,6 +85,7 @@ export function PageBanner({
   description,
   stats,
   actions,
+  rings,
 }: {
   eyebrow?: string;
   status?: BannerStatus;
@@ -50,6 +93,7 @@ export function PageBanner({
   description?: string;
   stats?: BannerStat[];
   actions?: ReactNode;
+  rings?: BannerRing[];
 }) {
   return (
     <Box
@@ -130,6 +174,13 @@ export function PageBanner({
               </Box>
             ))}
           </SimpleGrid>
+        )}
+        {rings && rings.length > 0 && (
+          <Flex gap={{ base: "3", md: "4" }} wrap="wrap">
+            {rings.map((r) => (
+              <Ring key={r.label} {...r} />
+            ))}
+          </Flex>
         )}
       </Stack>
     </Box>

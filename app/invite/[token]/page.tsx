@@ -1,8 +1,7 @@
 "use client";
 
-import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import { Button, Input, InputGroup, Stack, Text } from "@chakra-ui/react";
-import NextLink from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { AuthCard, FullPageSpinner } from "@/components/AuthCard";
@@ -12,8 +11,7 @@ import { MailIcon, MIN_PASSWORD_LENGTH, PasswordInput, PasswordStrength, UserIco
 import { readApiError } from "@/lib/errors";
 import { GREETING } from "@/lib/greeting";
 import { useI18n } from "@/lib/i18n";
-import { LOGIN, ME } from "@/lib/graphql/auth";
-import { ACCEPT_STAFF_INVITATION, INVITATION_CHECK, type InvitableRole } from "@/lib/graphql/staff";
+import { ACCEPT_STAFF_INVITATION, INVITATION_CHECK } from "@/lib/graphql/staff";
 
 type FormState = { name: string; email: string; password: string; confirm: string };
 const EMPTY: FormState = { name: "", email: "", password: "", confirm: "" };
@@ -26,22 +24,17 @@ export default function InvitePage() {
   );
 }
 
-// A judge or staff member opens the link the admin sent them: 1. they create their account
-// (this does not log anyone in or out), 2. they log in with it. If someone is already logged in on
-// this browser (often the admin testing the link), they stay logged in: one browser holds one
-// login, so the new person logs in on their own device, or here only if they choose to switch.
+// A judge or staff member opens the link the admin sent them: 1. they create their account,
+// 2. the login page opens, where they log in with it. Nobody is logged out: whoever is logged in on
+// this browser (often the admin testing the link) stays so until the new person actually logs in
+// here, and their sessions on other devices are never touched.
 function Invite() {
   const router = useRouter();
   const { t, apiError } = useI18n();
-  const client = useApolloClient();
   const { token } = useParams<{ token: string }>();
   const check = useQuery(INVITATION_CHECK, { variables: { token }, fetchPolicy: "network-only" });
-  const me = useQuery(ME, { fetchPolicy: "network-only" });
   const [accept, { loading }] = useMutation(ACCEPT_STAFF_INVITATION);
-  // Set once the account exists: the page then shows the login step for that email.
-  const [created, setCreated] = useState<{ email: string } | null>(null);
-
-  const invitationRole = check.data?.invitationCheck.role ?? null;
+  const [leaving, setLeaving] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +58,9 @@ function Invite() {
     try {
       const { name, email, password } = form;
       await accept({ variables: { input: { token, name, email, password } } });
-      setCreated({ email: email.trim() });
+      setLeaving(true);
+      const params = new URLSearchParams({ created: "1", email: email.trim() });
+      router.replace(`/login?${params}`);
     } catch (err) {
       const failure = apiError(readApiError(err));
       setError(failure.message);
@@ -73,25 +68,8 @@ function Invite() {
     }
   }
 
-  const current = me.data?.me;
-
-  // Step 2, after the account was created (the link is used up now, so check it no more).
-  if (created && invitationRole) {
-    return (
-      <LoginStep
-        email={created.email}
-        role={invitationRole}
-        current={current ?? null}
-        onLoggedIn={async () => {
-          // Forget everything cached for whoever used this browser before, then load the new account.
-          await client.clearStore();
-          router.replace("/dashboard");
-        }}
-      />
-    );
-  }
-
-  if (check.loading || me.loading) return <FullPageSpinner />;
+  // Account created: on the way to the login page.
+  if (leaving || check.loading) return <FullPageSpinner />;
   if (check.error) {
     return (
       <AuthCard panel title={t.invite.eyebrow}>
@@ -165,108 +143,6 @@ function Invite() {
           <Button type="submit" colorPalette="brand" size="lg" loading={loading}>
             {t.invite.submit}
           </Button>
-        </Stack>
-      </form>
-    </AuthCard>
-  );
-}
-
-type CurrentUser = { name: string; role: string };
-
-// Step 2: log in with the new account. If someone else is logged in on this browser, nothing
-// happens to them unless the new person chooses to log in here (which switches this browser).
-function LoginStep({
-  email: createdEmail,
-  role,
-  current,
-  onLoggedIn,
-}: {
-  email: string;
-  role: InvitableRole;
-  current: CurrentUser | null;
-  onLoggedIn: () => Promise<void>;
-}) {
-  const { t, apiError } = useI18n();
-  const [login, { loading }] = useMutation(LOGIN);
-  const [switching, setSwitching] = useState(false);
-  const [email, setEmail] = useState(createdEmail);
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await login({ variables: { email, password } });
-      await onLoggedIn();
-    } catch (err) {
-      setError(apiError(readApiError(err)).message);
-      setPassword("");
-    }
-  }
-
-  const roleLabel = t.invite.roles[role] ?? role;
-
-  if (current && !switching) {
-    return (
-      <AuthCard panel eyebrow={t.invite.createdEyebrow} title={t.invite.readyTitle(roleLabel)}>
-        <Stack gap="5">
-          <Text color="fg.muted">
-            {t.invite.stillLoggedIn(current.name, t.invite.roles[current.role] ?? current.role)}{" "}
-            {t.invite.newLogsInBefore(roleLabel)} <b>{createdEmail}</b> {t.invite.newLogsInAfter}
-          </Text>
-          <Button asChild colorPalette="brand" size="lg">
-            <NextLink href="/dashboard">{t.invite.backToDashboard}</NextLink>
-          </Button>
-          <Button variant="outline" size="lg" onClick={() => setSwitching(true)}>
-            {t.invite.loginHereInstead(roleLabel)}
-          </Button>
-        </Stack>
-      </AuthCard>
-    );
-  }
-
-  return (
-    <AuthCard
-      panel
-      eyebrow={t.invite.createdEyebrow}
-      title={t.invite.nowLogIn}
-      subtitle={current ? t.invite.switchesFrom(current.name) : t.invite.useNewCredentials}
-    >
-      <form onSubmit={onSubmit} noValidate>
-        <Stack gap="5">
-          <ErrorAlert message={error} />
-
-          <FormField label={t.common.email}>
-            <InputGroup startElement={<MailIcon />}>
-              <Input
-                type="email"
-                autoComplete="email"
-                size="lg"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </InputGroup>
-          </FormField>
-
-          <FormField label={t.common.password}>
-            <PasswordInput
-              autoComplete="current-password"
-              size="lg"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-            />
-          </FormField>
-
-          <Button type="submit" colorPalette="brand" size="lg" loading={loading} disabled={!email || !password}>
-            {t.invite.submitLogin}
-          </Button>
-          {current && (
-            <Button variant="ghost" size="lg" onClick={() => setSwitching(false)}>
-              {t.invite.cancelStay(current.name)}
-            </Button>
-          )}
         </Stack>
       </form>
     </AuthCard>

@@ -1,29 +1,34 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
-import { Alert, Badge, Box, Button, Card, Circle, Flex, Heading, IconButton, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
-import { Copy, ExternalLink, Lock, Mail, MailOpen, MonitorSmartphone, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Alert, Badge, Box, Button, Card, chakra, Circle, Flex, Heading, IconButton, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Copy, Dices, ExternalLink, MonitorSmartphone, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { confirmDialog } from "@/components/ConfirmDialog";
 import { RoleOnly } from "@/components/AdminOnly";
 import { CopyButton } from "@/components/CopyButton";
+import { EditEnvelopeDialog } from "@/components/EditEnvelopeDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
-import { FormField } from "@/components/FormField";
+import { MushafPage } from "@/components/MushafPage";
+import { QuestionPicker } from "@/components/QuestionPicker";
 import { PageBanner } from "@/components/PageBanner";
 import { isLocalLink } from "@/components/ShareLink";
+import { EnvelopeFace } from "@/components/StageEnvelope";
 import { toaster } from "@/components/Toaster";
 import { readApiError } from "@/lib/errors";
 import { ME } from "@/lib/graphql/auth";
 import {
   CREATE_ENVELOPE,
+  CREATE_RANDOM_ENVELOPES,
   DELETE_ENVELOPE,
+  DELETE_UNUSED_ENVELOPES,
   ENVELOPES,
   REGENERATE_STAGE_SCREEN_LINK,
   STAGE_SCREEN_LINK,
-  UPDATE_ENVELOPE,
   type Envelope,
 } from "@/lib/graphql/judging";
 import { useI18n } from "@/lib/i18n";
+import { parseRef, QUESTION_JUZ, randomRef, refText } from "@/lib/quran";
 
 const EMPTY = ["", "", ""];
 
@@ -41,37 +46,49 @@ export default function EnvelopesPage() {
   return (
     <RoleOnly roles={["ADMIN", "JUDGE", "STAFF"]}>
       <PageBanner
-        eyebrow={tx("Questions")}
-        title={tx("Envelopes")}
-        description={
-          isAdmin
-            ? tx("Write the envelopes here: 3 questions each. On stage, the participant picks one closed envelope on the stage screen; it is then used and leaves the draw.")
-            : tx("The admin prepares the envelopes. Their questions stay sealed until a participant draws one.")
+        title={tx("Questions")}
+        actions={
+          isAdmin ? (
+            <Button asChild size="lg" bg="gold.400" color="brand.900" _hover={{ bg: "gold.300" }}>
+              <a href="#new-envelope">
+                <Plus size={18} aria-hidden />
+                {tx("Write questions")}
+              </a>
+            </Button>
+          ) : undefined
         }
-        stats={[
-          { label: tx("Envelopes"), value: data ? envelopes.length : undefined },
-          { label: tx("Still in the draw"), value: data ? unused.length : undefined },
-          { label: tx("Drawn"), value: data ? envelopes.length - unused.length : undefined },
+        rings={[
+          { label: tx("Available"), value: data ? unused.length : undefined, total: envelopes.length, color: "#4ADE80" },
+          { label: tx("Used"), value: data ? envelopes.length - unused.length : undefined, total: envelopes.length, color: "#E2C06A" },
         ]}
       />
       <Stack gap={{ base: "6", md: "8" }}>
         {isAdmin && <StageScreenCard />}
-        {isAdmin && <EnvelopeForm key={editing?.id ?? "new"} editing={editing} onDone={() => setEditing(null)} />}
+        {isAdmin && (
+          <Box id="new-envelope" scrollMarginTop="24">
+            <EnvelopeForm />
+          </Box>
+        )}
+        {isAdmin && <RandomEnvelopesCard />}
+        {isAdmin && editing && <EditEnvelopeDialog key={editing.id} envelope={editing} onClose={() => setEditing(null)} />}
 
         <Card.Root>
           <Card.Body p={{ base: "5", md: "7" }} gap="4">
-            <Heading size="md" color="brand.900">
-              {tx("All envelopes")}
-            </Heading>
+            <Flex justify="space-between" align="center" gap="3" wrap="wrap">
+              <Heading size="md" color="brand.900">
+                {tx("All questions")}
+              </Heading>
+              {isAdmin && unused.length > 0 && <DeleteUnusedButton count={unused.length} />}
+            </Flex>
             <ErrorAlert message={error ? readApiError(error).message : null} />
             {loading && !data ? (
               <Text color="fg.muted">{tx("Loading…")}</Text>
             ) : envelopes.length === 0 ? (
               <Text color="fg.muted" fontSize="sm">
-                {isAdmin ? tx("No envelopes yet. Prepare at least one per participant.") : tx("The admin has not prepared any envelope yet.")}
+                {isAdmin ? tx("No questions yet. Prepare one set per participant.") : tx("The admin has not written any questions yet.")}
               </Text>
             ) : (
-              <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} gap="4">
+              <SimpleGrid columns={{ base: 2, md: 3, xl: 4 }} gap={{ base: "4", md: "6" }}>
                 {envelopes.map((e) => (
                   <EnvelopeCard key={e.id} envelope={e} canEdit={isAdmin} onEdit={() => setEditing(e)} />
                 ))}
@@ -189,13 +206,15 @@ function StageScreenCard() {
   );
 }
 
-function EnvelopeForm({ editing, onDone }: { editing: Envelope | null; onDone: () => void }) {
-  const [questions, setQuestions] = useState<string[]>(editing ? [...editing.questions] : EMPTY);
+function EnvelopeForm() {
+  // "surah:ayah" each.
+  const [questions, setQuestions] = useState<string[]>(EMPTY);
+  const [preview, setPreview] = useState<number | null>(null);
+  const setQuestion = (i: number, value: string) => setQuestions((all) => all.map((old, j) => (j === i ? value : old)));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
-  const [create, createState] = useMutation(CREATE_ENVELOPE, { refetchQueries: [{ query: ENVELOPES }] });
-  const [update, updateState] = useMutation(UPDATE_ENVELOPE);
+  const [create, { loading }] = useMutation(CREATE_ENVELOPE, { refetchQueries: [{ query: ENVELOPES }] });
   const { tx } = useI18n();
 
   async function onSubmit(e: FormEvent) {
@@ -204,14 +223,9 @@ function EnvelopeForm({ editing, onDone }: { editing: Envelope | null; onDone: (
     setFieldErrors({});
     setSaved(null);
     try {
-      if (editing) {
-        await update({ variables: { id: editing.id, questions } });
-        onDone();
-      } else {
-        const res = await create({ variables: { questions } });
-        setSaved(res.data?.createEnvelope.number ?? null);
-        setQuestions(EMPTY);
-      }
+      const res = await create({ variables: { questions } });
+      setSaved(res.data?.createEnvelope.number ?? null);
+      setQuestions(EMPTY);
     } catch (err) {
       const apiError = readApiError(err);
       setError(apiError.message);
@@ -226,49 +240,162 @@ function EnvelopeForm({ editing, onDone }: { editing: Envelope | null; onDone: (
           <Stack gap="5">
             <Flex align="center" gap="3">
               <Circle size="10" bg="brand.900" color="gold.300" flexShrink={0}>
-                {editing ? <Pencil size={18} aria-hidden /> : <Plus size={20} aria-hidden />}
+                <Plus size={20} aria-hidden />
               </Circle>
               <Box>
                 <Heading size="md" color="brand.900">
-                  {editing ? tx("Change envelope {n}", { n: editing.number }) : tx("Prepare a new envelope")}
+                  {tx("Write new questions")}
                 </Heading>
                 <Text fontSize="sm" color="fg.muted">
-                  {tx("Write where each question starts, e.g. “An-Naba 1–10”.")}
+                  {tx("Choose the ayah each question starts from. The participant recites the whole page.")}
                 </Text>
               </Box>
             </Flex>
             <ErrorAlert message={error} />
             <SimpleGrid columns={{ base: 1, md: 3 }} gap="4">
               {questions.map((q, i) => (
-                <FormField key={i} label={tx("Question {n}", { n: i + 1 })} error={fieldErrors[`questions.${i}`]}>
-                  <Input
-                    value={q}
-                    placeholder={["An-Naba 1–10", "Abasa 1–16", "At-Takwir 1–14"][i]}
-                    onChange={(e) => setQuestions((all) => all.map((old, j) => (j === i ? e.target.value : old)))}
-                  />
-                </FormField>
+                <QuestionPicker
+                  key={i}
+                  index={i}
+                  value={q}
+                  error={fieldErrors[`questions.${i}`]}
+                  previewing={preview === i}
+                  onChange={(value) => setQuestion(i, value)}
+                  onPreview={() => setPreview((p) => (p === i ? null : i))}
+                />
               ))}
             </SimpleGrid>
+            {preview !== null && parseRef(questions[preview] ?? "") && (
+              <MushafPage key={questions[preview]} start={parseRef(questions[preview]!)!} maxH="50vh" />
+            )}
             <Flex gap="3" align="center" wrap="wrap">
-              <Button
-                type="submit"
-                colorPalette="brand"
-                loading={createState.loading || updateState.loading}
-                disabled={questions.some((q) => q.trim().length < 2)}
-              >
-                {editing ? tx("Save changes") : tx("Seal the envelope")}
+              <Button variant="outline" colorPalette="brand" onClick={() => setQuestions(QUESTION_JUZ.map((_, i) => refText(randomRef(i))))}>
+                <Dices size={16} aria-hidden />
+                {tx("Pick all 3 at random")}
               </Button>
-              {editing && (
-                <Button variant="ghost" onClick={onDone}>
-                  {tx("Cancel")}
-                </Button>
-              )}
+              <Button type="submit" colorPalette="brand" loading={loading} disabled={questions.some((q) => !parseRef(q))}>
+                {tx("Save the questions")}
+              </Button>
               {saved && (
                 <Text fontSize="sm" color="green.600">
-                  {tx("Envelope {n} is ready.", { n: saved })}
+                  {tx("Questions {n} are ready.", { n: saved })}
                 </Text>
               )}
             </Flex>
+          </Stack>
+        </form>
+      </Card.Body>
+    </Card.Root>
+  );
+}
+
+// Deletes every envelope not drawn yet, after asking. Drawn ones stay (the server keeps them too).
+function DeleteUnusedButton({ count }: { count: number }) {
+  const [removeAll, { loading }] = useMutation(DELETE_UNUSED_ENVELOPES, { refetchQueries: [{ query: ENVELOPES }] });
+  const { tx } = useI18n();
+
+  async function onClick() {
+    const ok = await confirmDialog({
+      title: tx("Delete all questions"),
+      message: tx("Delete the {n} envelopes not drawn yet? Envelopes already drawn on stage are kept. This cannot be undone.", { n: count }),
+      confirmLabel: tx("Delete all"),
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      const res = await removeAll();
+      toaster.create({ type: "success", title: tx("{n} envelopes deleted", { n: res.data?.deleteUnusedEnvelopes ?? 0 }) });
+    } catch (err) {
+      toaster.create({ type: "error", title: readApiError(err).message });
+    }
+  }
+
+  return (
+    <Button size="sm" variant="outline" colorPalette="red" loading={loading} onClick={onClick}>
+      <Trash2 size={15} aria-hidden />
+      {tx("Delete all")}
+    </Button>
+  );
+}
+
+const MAX_RANDOM = 200;
+
+// Many envelopes at once: every question picked at random in its own ten juz (the server also
+// avoids giving the same page twice for the same question).
+function RandomEnvelopesCard() {
+  const [count, setCount] = useState("10");
+  const [error, setError] = useState<string | null>(null);
+  const [made, setMade] = useState<{ from: number; to: number } | null>(null);
+  const [create, { loading }] = useMutation(CREATE_RANDOM_ENVELOPES, { refetchQueries: [{ query: ENVELOPES }] });
+  const { tx } = useI18n();
+  const n = Number(count);
+  const valid = Number.isInteger(n) && n >= 1 && n <= MAX_RANDOM;
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    setError(null);
+    setMade(null);
+    if (!(await confirmDialog({ message: tx("Create {n} envelopes with random questions?", { n }), confirmLabel: tx("Create") }))) return;
+    try {
+      const res = await create({ variables: { count: n } });
+      const list = res.data?.createRandomEnvelopes ?? [];
+      if (list.length) setMade({ from: list[0]!.number, to: list[list.length - 1]!.number });
+    } catch (err) {
+      setError(readApiError(err).message);
+    }
+  }
+
+  return (
+    <Card.Root>
+      <Card.Body p={{ base: "5", md: "7" }}>
+        <form onSubmit={onSubmit} noValidate>
+          <Stack gap="4">
+            <Flex align="center" gap="3">
+              <Circle size="10" bg="gold.400" color="brand.900" flexShrink={0}>
+                <Dices size={20} aria-hidden />
+              </Circle>
+              <Box>
+                <Heading size="md" color="brand.900">
+                  {tx("Create many envelopes at random")}
+                </Heading>
+                <Text fontSize="sm" color="fg.muted">
+                  {tx("Each envelope gets 3 random ayahs: juz 1–10, juz 11–20 and juz 21–30. Pages already used are avoided.")}
+                </Text>
+              </Box>
+            </Flex>
+            <ErrorAlert message={error} />
+            <Flex gap="3" align="flex-end" wrap="wrap">
+              <Box>
+                <chakra.label htmlFor="random-count" fontSize="sm" fontWeight="medium" display="block" mb="1.5">
+                  {tx("How many envelopes?")}
+                </chakra.label>
+                <Input
+                  id="random-count"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={MAX_RANDOM}
+                  w="32"
+                  value={count}
+                  onChange={(e) => setCount(e.target.value)}
+                />
+              </Box>
+              <Button type="submit" colorPalette="brand" loading={loading} disabled={!valid}>
+                <Dices size={16} aria-hidden />
+                {tx("Create at random")}
+              </Button>
+            </Flex>
+            {!valid && count !== "" && (
+              <Text fontSize="sm" color="red.600">
+                {tx("Between 1 and {max}.", { max: MAX_RANDOM })}
+              </Text>
+            )}
+            {made && (
+              <Text fontSize="sm" color="green.600">
+                {tx("Envelopes {from}–{to} are ready.", made)}
+              </Text>
+            )}
           </Stack>
         </form>
       </Card.Body>
@@ -282,7 +409,7 @@ function EnvelopeCard({ envelope: e, canEdit, onEdit }: { envelope: Envelope; ca
   const { tx } = useI18n();
 
   async function onDelete() {
-    if (!(await confirmDialog({ message: tx("Delete envelope {n}?", { n: e.number }), confirmLabel: tx("Delete"), destructive: true }))) return;
+    if (!(await confirmDialog({ message: tx("Delete questions {n}?", { n: e.number }), confirmLabel: tx("Delete"), destructive: true }))) return;
     try {
       await remove({ variables: { id: e.id } });
     } catch (err) {
@@ -291,55 +418,29 @@ function EnvelopeCard({ envelope: e, canEdit, onEdit }: { envelope: Envelope; ca
   }
 
   return (
-    <Box rounded="xl" borderWidth="1px" p="4" bg={e.used ? "bg.subtle" : "white"} opacity={e.used ? 0.8 : 1}>
-      <Flex justify="space-between" align="center" mb="3" gap="2">
-        <Flex align="center" gap="2">
-          <Box color={e.used ? "fg.muted" : "gold.600"}>{e.used ? <MailOpen size={18} aria-hidden /> : <Mail size={18} aria-hidden />}</Box>
-          <Text fontWeight="semibold" color="brand.900">
-            {tx("Envelope {n}", { n: e.number })}
-          </Text>
-        </Flex>
+    <Stack gap="2.5">
+      <EnvelopeFace used={e.used} />
+      <Flex justify="flex-end" align="center" gap="2" minH="8">
         {e.used ? (
           <Badge variant="subtle" colorPalette="gray">
-            {tx("Drawn")}
+            {tx("Used")}
           </Badge>
         ) : !canEdit ? (
-          <Badge variant="subtle" colorPalette="gold">
-            {tx("Sealed")}
+          <Badge variant="subtle" colorPalette="green">
+            {tx("Available")}
           </Badge>
         ) : (
           <Flex gap="1">
-            <IconButton aria-label={tx("Change envelope {n}", { n: e.number })} size="xs" variant="ghost" onClick={onEdit}>
+            <IconButton aria-label={tx("Change questions {n}", { n: e.number })} size="xs" variant="ghost" onClick={onEdit}>
               <Pencil size={14} />
             </IconButton>
-            <IconButton aria-label={tx("Delete envelope {n}", { n: e.number })} size="xs" variant="ghost" colorPalette="red" loading={loading} onClick={onDelete}>
+            <IconButton aria-label={tx("Delete questions {n}", { n: e.number })} size="xs" variant="ghost" colorPalette="red" loading={loading} onClick={onDelete}>
               <Trash2 size={14} />
             </IconButton>
           </Flex>
         )}
       </Flex>
-      {e.questions.length === 0 && (
-        <Flex align="center" gap="2" color="fg.muted" fontSize="sm">
-          <Lock size={14} aria-hidden />
-          {tx("Questions hidden until drawn")}
-        </Flex>
-      )}
-      <Stack gap="1.5" as="ol">
-        {e.questions.map((q, i) => (
-          <Flex as="li" key={i} gap="2" fontSize="sm">
-            <Text color="fg.subtle" w="4">
-              {i + 1}.
-            </Text>
-            <Text>{q}</Text>
-          </Flex>
-        ))}
-      </Stack>
-      {e.usedBy && (
-        <Text fontSize="xs" color="fg.muted" mt="3">
-          {tx("Drawn by {name}", { name: e.usedBy.fullName })}
-        </Text>
-      )}
       <ErrorAlert message={error} />
-    </Box>
+    </Stack>
   );
 }

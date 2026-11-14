@@ -1,0 +1,8 @@
+Madina mushaf (Hafs), as printed by the King Fahd Glorious Qur'an Printing Complex, Madinah.
+
+fonts/p{1..604}.woff2  King Fahd Complex page fonts (QCF V1, 1405H print), as distributed by Quran.com.
+pages/{1..604}.json    Which glyphs are on which of the 15 lines of each page, from the Quran.com API v4
+                       (https://api.quran.com). Format: { page, lines: [[line, [[surah, ayah, glyph, isAyahEnd], ...]], ...] }.
+
+The fonts and glyphs are shown unchanged. Page and juz boundaries (lib/quran/meta.ts) are from
+Tanzil's metadata (https://tanzil.net).
