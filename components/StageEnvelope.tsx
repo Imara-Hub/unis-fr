@@ -146,7 +146,7 @@ function EnvelopeLayers({ selected = false }: { selected?: boolean }) {
       aria-hidden
     >
       Musabaqa ·{" "}
-      <Text as="span" lang="ar" dir="rtl" fontFamily="arabic" letterSpacing="0" textTransform="none" fontSize="1.15em">
+      <Text as="span" lang="ar" dir="rtl" fontFamily="bismillah" letterSpacing="0" textTransform="none" fontSize="1.15em">
         بسم الله
       </Text>{" "}
       · 1448 H

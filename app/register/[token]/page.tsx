@@ -17,12 +17,13 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { Camera, Check, CircleCheck, IdCard, RefreshCw, UserPlus } from "lucide-react";
-import NextImage from "next/image";
+import { Camera, Check, CircleCheck, CloudOff, IdCard, RefreshCw, UserPlus } from "lucide-react";
 import { useParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { AuthCard, FullPageSpinner } from "@/components/AuthCard";
+import { BirthDatePicker } from "@/components/BirthDatePicker";
 import { ErrorAlert } from "@/components/ErrorAlert";
+import { CompetitionBand } from "@/components/brand/CompetitionTitle";
 import { FormField } from "@/components/FormField";
 import { readApiError } from "@/lib/errors";
 import { useI18n } from "@/lib/i18n";
@@ -44,9 +45,20 @@ import {
   registerParticipant,
   type RegistrationInput,
 } from "@/lib/register";
+import {
+  queuedRegistrations,
+  queueRegistration,
+  isWaiting,
+  removeQueued,
+  resendWithTerms,
+  sendQueued,
+  type QueuedRegistration,
+} from "@/lib/registrationOutbox";
 
 // The registrar's details are flat fields here, sent as `contact` (see toInput).
-type FormState = Omit<RegistrationInput, "gender" | "registeredBy" | "contact"> & {
+// One "full name" box: split into first name and last name when sent (see splitName).
+type FormState = Omit<RegistrationInput, "firstName" | "middleName" | "lastName" | "gender" | "registeredBy" | "contact"> & {
+  fullName: string;
   gender: Gender | "";
   registeredBy: RegisteredBy | "";
   contactName: string;
@@ -60,9 +72,7 @@ type FormState = Omit<RegistrationInput, "gender" | "registeredBy" | "contact"> 
 const ID_CARD_RATIO = 85.6 / 54;
 
 const EMPTY: FormState = {
-  firstName: "",
-  middleName: "",
-  lastName: "",
+  fullName: "",
   phone: "",
   dateOfBirth: "",
   gender: "",
@@ -80,7 +90,7 @@ const EMPTY: FormState = {
 
 // What must be filled in depends on who fills in the form.
 function requiredFields(f: FormState): (keyof FormState)[] {
-  const always: (keyof FormState)[] = ["registeredBy", "firstName", "lastName", "dateOfBirth", "gender", "province", "commune", "institution", "institutionLocation"];
+  const always: (keyof FormState)[] = ["registeredBy", "fullName", "dateOfBirth", "gender", "province", "commune", "institution", "institutionLocation"];
   if (f.registeredBy === "SELF") return [...always, "phone"];
   if (f.registeredBy === "GUARDIAN") return [...always, "contactName", "contactPhone", "contactRelation"];
   if (f.registeredBy === "INSTITUTION") {
@@ -89,11 +99,21 @@ function requiredFields(f: FormState): (keyof FormState)[] {
   return always;
 }
 
+// "Jean Claude Ndayishimiye" → first name "Jean", last name "Claude Ndayishimiye".
+// Null when there are not at least two words.
+function splitName(fullName: string): { firstName: string; lastName: string } | null {
+  const words = fullName.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  return { firstName: words[0], lastName: words.slice(1).join(" ") };
+}
+
 function toInput(f: FormState): RegistrationInput {
-  const { contactName, contactPhone, contactRelation, contactInstitutionType, contactInstitutionName, ...rest } = f;
+  const { fullName, contactName, contactPhone, contactRelation, contactInstitutionType, contactInstitutionName, ...rest } = f;
   const registeredBy = f.registeredBy || "SELF";
+  const name = splitName(fullName) ?? { firstName: fullName.trim(), lastName: "" };
   return {
     ...rest,
+    ...name,
     phone: registeredBy === "SELF" ? f.phone : "",
     gender: f.gender as Gender,
     registeredBy,
@@ -112,6 +132,9 @@ function toInput(f: FormState): RegistrationInput {
 
 // The server's field names for the registrar ("contact.name") → this form's fields.
 const CONTACT_FIELDS: Record<string, keyof FormState> = {
+  firstName: "fullName",
+  middleName: "fullName",
+  lastName: "fullName",
   "contact.name": "contactName",
   "contact.phone": "contactPhone",
   "contact.relation": "contactRelation",
@@ -136,18 +159,7 @@ const FIELD_OF_CODE: Record<string, keyof FormState | "photo" | "idDocument" | "
 };
 
 // The competition banner above the form.
-const banner = (
-  <Box mx={{ base: "-1", md: "0" }}>
-    <NextImage
-      src="/form-banner.png"
-      alt="Grand concours de mémorisation du Saint Coran au Burundi, 7e édition, 1448 H – 2027 M"
-      width={1600}
-      height={285}
-      priority
-      style={{ width: "100%", height: "auto" }}
-    />
-  </Box>
-);
+const banner = <CompetitionBand />;
 
 export default function RegisterPage() {
   return (
@@ -162,7 +174,9 @@ function Register() {
   const { t, apiError } = useI18n();
   const tr = t.register;
   const status = useQuery(REGISTRATION_LINK_STATUS, { variables: { token }, fetchPolicy: "network-only" });
-  const [done, setDone] = useState<{ fullName: string; keep: Partial<FormState> } | null>(null);
+  // `queued`: no connection, the registration waits on this phone and is sent by itself.
+  const [done, setDone] = useState<{ fullName: string; keep: Partial<FormState>; queued?: boolean } | null>(null);
+  const queue = useRegistrationQueue(token);
   // Details carried over to the next form ("Register another participant"), and a fresh form each time.
   const [prefill, setPrefill] = useState<Partial<FormState>>({});
   const [round, setRound] = useState(0);
@@ -170,10 +184,14 @@ function Register() {
 
   // Only the first load: a refetch (new terms after TERMS_CHANGED) keeps the form and what was typed.
   if (status.loading && !status.data) return <FullPageSpinner />;
-  if (status.error) {
+  const notice = <QueueNotice queue={queue} terms={status.data?.registrationLinkStatus.terms ?? null} />;
+  if (status.error && !status.data) {
     return (
       <AuthCard title={tr.errorTitle} top={banner}>
-        <ErrorAlert message={apiError(readApiError(status.error)).message} />
+        <Stack gap="4">
+          {notice}
+          <ErrorAlert message={apiError(readApiError(status.error)).message} />
+        </Stack>
       </AuthCard>
     );
   }
@@ -196,9 +214,14 @@ function Register() {
   if (done) {
     const forSomeone = Boolean(done.keep.registeredBy);
     return (
-      <AuthCard title={tr.doneTitle} subtitle={forSomeone ? tr.doneOther(done.fullName) : tr.doneThanks(done.fullName)} top={banner}>
+      <AuthCard
+        title={done.queued ? tr.queuedTitle : tr.doneTitle}
+        subtitle={done.queued ? tr.queuedSubtitle(done.fullName) : forSomeone ? tr.doneOther(done.fullName) : tr.doneThanks(done.fullName)}
+        top={banner}
+      >
         <Stack gap="4">
-          <Text>{forSomeone ? tr.doneTextOther : tr.doneText}</Text>
+          {notice}
+          <Text>{done.queued ? tr.queuedText : forSomeone ? tr.doneTextOther : tr.doneText}</Text>
           {forSomeone ? (
             <Stack gap="2" align="flex-start">
               <Button
@@ -218,7 +241,7 @@ function Register() {
                 {tr.registerAnotherHelp}
               </Text>
             </Stack>
-          ) : (
+          ) : done.queued ? null : (
             <Text color="fg.muted">{tr.doneClose}</Text>
           )}
         </Stack>
@@ -242,16 +265,144 @@ function Register() {
       title={tr.title}
       subtitle={tr.subtitle(MAX_AGE)}
     >
+      <Box mb={queue.items.length || queue.sent.length ? "6" : undefined}>{notice}</Box>
       <RegistrationForm
         key={round}
         token={token}
         terms={link.terms}
         initial={prefill}
         onDone={(fullName, keep) => setDone({ fullName, keep })}
+        onQueued={(fullName, keep) => {
+          setDone({ fullName, keep, queued: true });
+          void queue.refresh();
+        }}
         onClosed={() => setClosed(true)}
         onTermsChanged={() => void status.refetch()}
       />
     </AuthCard>
+  );
+}
+
+// Registrations saved on this phone while there was no connection: sent by themselves when the page
+// opens, when the connection returns and every 20 seconds while it stays open.
+function useRegistrationQueue(token: string) {
+  const [items, setItems] = useState<QueuedRegistration[]>([]);
+  const [sent, setSent] = useState<string[]>([]);
+  const busy = useRef(false);
+
+  const refresh = useCallback(async () => setItems(await queuedRegistrations(token)), [token]);
+  const flush = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      for (const item of await queuedRegistrations(token)) {
+        if (!isWaiting(item)) continue; // refused: waits for the person (see QueueNotice)
+        const { outcome } = await sendQueued(item);
+        if (outcome === "sent") setSent((s) => [...s, item.fullName]);
+        if (outcome === "waiting") break; // no connection or too busy: the next ones would fail too
+      }
+    } finally {
+      busy.current = false;
+      await refresh();
+    }
+  }, [token, refresh]);
+
+  useEffect(() => {
+    void flush();
+    const timer = setInterval(() => void flush(), 20_000);
+    const onOnline = () => void flush();
+    window.addEventListener("online", onOnline);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [flush]);
+
+  async function resend(item: QueuedRegistration, terms: { version: number }) {
+    const { outcome } = await resendWithTerms(item, { acceptTerms: true, termsVersion: terms.version });
+    if (outcome === "sent") setSent((s) => [...s, item.fullName]);
+    await refresh();
+  }
+  async function remove(item: QueuedRegistration) {
+    await removeQueued(item.id!);
+    await refresh();
+  }
+
+  return { items, sent, refresh, resend, remove };
+}
+
+function QueueNotice({
+  queue,
+  terms,
+}: {
+  queue: ReturnType<typeof useRegistrationQueue>;
+  terms: { text: string; version: number } | null;
+}) {
+  const { t, apiError } = useI18n();
+  const tr = t.register;
+  const [sending, setSending] = useState<number | null>(null);
+  const waiting = queue.items.filter(isWaiting);
+  const refused = queue.items.filter((i) => !isWaiting(i));
+  if (!waiting.length && !refused.length && !queue.sent.length) return null;
+
+  return (
+    <Stack gap="3">
+      {queue.sent.length > 0 && (
+        <Flex align="center" gap="3" px="4" py="3" rounded="xl" bg="green.50" borderWidth="1px" borderColor="green.200" color="green.900" role="status">
+          <CircleCheck size={18} aria-hidden style={{ flexShrink: 0 }} />
+          <Text fontSize="sm" fontWeight="medium">
+            {tr.queueSent(queue.sent.join(", "))}
+          </Text>
+        </Flex>
+      )}
+      {waiting.length > 0 && (
+        <Flex align="center" gap="3" px="4" py="3" rounded="xl" bg="orange.50" borderWidth="1px" borderColor="orange.200" color="orange.900" role="status">
+          <CloudOff size={18} aria-hidden style={{ flexShrink: 0 }} />
+          <Text fontSize="sm" fontWeight="medium">
+            {tr.queueWaiting(waiting.map((i) => i.fullName).join(", "))}
+          </Text>
+        </Flex>
+      )}
+      {refused.map((item) => {
+        const newTerms = item.refused?.code === "TERMS_CHANGED" ? terms : null;
+        return (
+          <Stack key={item.id} gap="3" px="4" py="3" rounded="xl" bg="red.50" borderWidth="1px" borderColor="red.200" color="red.900">
+            <Text fontSize="sm" fontWeight="medium">
+              {tr.queueRefused(item.fullName, apiError({ code: item.refused?.code, message: item.refused?.message ?? "", fields: {} }).message)}
+            </Text>
+            {newTerms ? (
+              <>
+                <Text fontSize="sm">{tr.queueTermsChanged}</Text>
+                <Box maxH="48" overflowY="auto" p="3" rounded="md" bg="white" borderWidth="1px" fontSize="sm" color="fg" whiteSpace="pre-wrap">
+                  {newTerms.text}
+                </Box>
+              </>
+            ) : (
+              <Text fontSize="sm">{tr.queueRefusedHelp}</Text>
+            )}
+            <Flex gap="2" wrap="wrap">
+              {newTerms && (
+                <Button
+                  size="sm"
+                  colorPalette="brand"
+                  loading={sending === item.id}
+                  onClick={async () => {
+                    setSending(item.id!);
+                    await queue.resend(item, newTerms);
+                    setSending(null);
+                  }}
+                >
+                  {tr.queueAcceptSend}
+                </Button>
+              )}
+              <Button size="sm" variant="outline" colorPalette="red" disabled={sending === item.id} onClick={() => void queue.remove(item)}>
+                {tr.queueRemove}
+              </Button>
+            </Flex>
+          </Stack>
+        );
+      })}
+    </Stack>
   );
 }
 
@@ -260,6 +411,7 @@ function RegistrationForm({
   terms,
   initial,
   onDone,
+  onQueued,
   onClosed,
   onTermsChanged,
 }: {
@@ -267,10 +419,11 @@ function RegistrationForm({
   terms: { text: string; version: number };
   initial: Partial<FormState>;
   onDone: (fullName: string, keep: Partial<FormState>) => void;
+  onQueued: (fullName: string, keep: Partial<FormState>) => void;
   onClosed: () => void;
   onTermsChanged: () => void;
 }) {
-  const { t, apiError } = useI18n();
+  const { t, apiError, locale } = useI18n();
   const tr = t.register;
   const [form, setForm] = useState<FormState>({ ...EMPTY, ...initial });
   // The terms version the person ticked "I accept" for. New terms (after TERMS_CHANGED) untick it.
@@ -374,6 +527,10 @@ function RegistrationForm({
       setFieldErrors({ contactInstitutionType: tr.errChooseOne });
       return;
     }
+    if (!splitName(form.fullName)) {
+      setFieldErrors({ fullName: tr.errFullName });
+      return;
+    }
     if (!photo) {
       setFieldErrors({ photo: tr.errAddPhoto });
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -393,19 +550,26 @@ function RegistrationForm({
     }
 
     setSubmitting(true);
-    const result = await registerParticipant(
-      token,
-      toInput(form),
-      { acceptTerms: accepted, termsVersion: terms.version },
-      photo,
-      idDocument,
-    );
-    setSubmitting(false);
+    const input = toInput(form);
+    const acceptance = { acceptTerms: accepted, termsVersion: terms.version };
+    const result = await registerParticipant(token, input, acceptance, photo, idDocument);
 
     if ("fullName" in result) {
+      setSubmitting(false);
       onDone(result.fullName, keptForNext(form));
       return;
     }
+    // No connection (no answer, so no error code): keep it on the phone, it is sent by itself.
+    if (!result.code) {
+      const fullName = `${input.firstName} ${input.lastName}`;
+      const kept = await queueRegistration({ token, fullName, input, terms: acceptance, photo, idDocument });
+      setSubmitting(false);
+      if (kept) {
+        onQueued(fullName, keptForNext(form));
+        return;
+      }
+    }
+    setSubmitting(false);
     const failure = apiError(result);
     if (result.code === "LINK_INVALID" || result.code === "REGISTRATION_CLOSED" || result.code === "TERMS_NOT_SET") {
       onClosed();
@@ -508,17 +672,16 @@ function RegistrationForm({
         </Section>
 
         <Section number={3} title={by && by !== "SELF" ? tr.sectionAboutParticipant : tr.sectionAbout}>
-          <SimpleGrid columns={{ base: 1, md: 3 }} gap="4">
-            <FormField label={tr.firstName} error={fieldErrors.firstName}>
-              <Input autoComplete="given-name" value={form.firstName} onChange={set("firstName")} />
-            </FormField>
-            <FormField label={tr.middleName} required={false} error={fieldErrors.middleName} helper={tr.middleNameHelp}>
-              <Input autoComplete="additional-name" value={form.middleName} onChange={set("middleName")} />
-            </FormField>
-            <FormField label={tr.lastName} error={fieldErrors.lastName}>
-              <Input autoComplete="family-name" value={form.lastName} onChange={set("lastName")} />
-            </FormField>
-          </SimpleGrid>
+          <FormField label={tr.fullName} error={fieldErrors.fullName} helper={tr.fullNameHelp}>
+            <Input
+              autoComplete="name"
+              value={form.fullName}
+              onChange={(e) => {
+                set("fullName")(e);
+                setFieldErrors(({ fullName: _, ...rest }) => rest);
+              }}
+            />
+          </FormField>
           <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4">
             {/* One number per registration: a parent or school gives only theirs, above. */}
             {(!by || by === "SELF") && (
@@ -531,12 +694,14 @@ function RegistrationForm({
               error={fieldErrors.dateOfBirth}
               helper={tr.dateOfBirthHelp(MAX_AGE)}
             >
-              <Input
-                type="date"
+              <BirthDatePicker
                 value={form.dateOfBirth}
-                onChange={set("dateOfBirth")}
+                onChange={(dateOfBirth) => choose("dateOfBirth", dateOfBirth)}
                 min={oldestBirthIso()}
                 max={todayIso()}
+                locale={locale[0]}
+                placeholder={tr.dateOfBirthPlaceholder}
+                labels={{ openCalendar: tr.openCalendar, month: tr.month, year: tr.year }}
               />
             </FormField>
           </SimpleGrid>

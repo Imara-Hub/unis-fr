@@ -27,7 +27,9 @@ import {
 import { formatPhone } from "@/lib/phone";
 import { useRegistrar } from "@/components/Registrar";
 import { useI18n } from "@/lib/i18n";
+import { questionLabel } from "@/lib/quran/label";
 import { MARK_TYPES } from "@/lib/marks";
+import { MarkName } from "@/components/MarkName";
 
 export default function ParticipantPage() {
   return (
@@ -59,7 +61,8 @@ function Participant() {
   );
 
   if (loading && !data) return <Text color="fg.muted">{tx("Loading…")}</Text>;
-  if (error) return <ErrorAlert message={readApiError(error).message} />;
+  // A failed reload keeps the page (and anything being typed in it); see the alert below.
+  if (error && !data) return <ErrorAlert message={readApiError(error).message} />;
   if (!participant || !data) {
     return (
       <Stack align="flex-start">
@@ -72,6 +75,7 @@ function Participant() {
   return (
     <Stack gap="6">
       {back}
+      <ErrorAlert message={error ? readApiError(error).message : null} />
       <Card.Root>
         <Card.Body>
           <Flex gap="6" direction={{ base: "column", sm: "row" }}>
@@ -86,7 +90,7 @@ function Participant() {
                   <ReviewBadge review={participant.review} size="md" />
                 )}
               </Flex>
-              <Details participant={participant} />
+              <Details participant={participant} isAdmin={role === "ADMIN"} />
               {role === "ADMIN" && (
                 <Box>
                   <Button asChild size="sm" variant="outline" colorPalette="brand">
@@ -182,12 +186,13 @@ function IdDocumentCard({ path }: { path: string }) {
   );
 }
 
-function Details({ participant: p }: { participant: ParticipantDetail }) {
+// Phones and who to call are for the admin only (the API sends them to nobody else).
+function Details({ participant: p, isAdmin }: { participant: ParticipantDetail; isAdmin: boolean }) {
   const { tx } = useI18n();
   const registrar = useRegistrar();
   const who = registrar.who(p);
   const items: [string, string][] = [
-    [tx("Phone"), formatPhone(p.phone)],
+    ...(isAdmin ? [[tx("Phone"), formatPhone(p.phone)] as [string, string]] : []),
     [tx("Registered by"), who ?? registrar.kind(p.registeredBy)],
     ...(p.contact ? [[tx("Their phone"), formatPhone(p.contact.phone)] as [string, string]] : []),
     [tx("Date of birth"), `${formatDay(p.dateOfBirth)} (${tx("{n} years", { n: ageOf(p.dateOfBirth) })})`],
@@ -231,7 +236,7 @@ function SheetsCard({ participantId, isJudge }: { participantId: string; isJudge
         ) : (
           <>
             <Text fontSize="sm" color="fg.muted">
-              {tx("Envelope {n}", { n: p.envelope.number })}: {p.envelope.questions.map((q, i) => `${i + 1}. ${q}`).join(" · ")}
+              {tx("Envelope {n}", { n: p.envelope.number })}: {p.envelope.questions.map((q, i) => `${i + 1}. ${questionLabel(q)}`).join(" · ")}
             </Text>
             {p.sheets.length === 0 ? (
               <Text color="fg.muted">{tx("No judge has started a sheet yet.")}</Text>
@@ -271,7 +276,7 @@ function SheetSummary({ sheet: s }: { sheet: JudgeSheet }) {
             <Table.ColumnHeader>{tx("Question")}</Table.ColumnHeader>
             {MARK_TYPES.map((t) => (
               <Table.ColumnHeader key={t.kind} textAlign="center" color={`${t.palette}.700`}>
-                {t.name}
+                <MarkName mark={t} />
               </Table.ColumnHeader>
             ))}
             <Table.ColumnHeader textAlign="end">{tx("Points")}</Table.ColumnHeader>

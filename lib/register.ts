@@ -19,7 +19,7 @@ export interface RegistrarContactInput {
 
 export interface RegistrationInput {
   firstName: string;
-  middleName: string; // optional: "" when there is none
+  middleName?: string; // no longer asked: only registrations queued before the full-name field have one
   lastName: string;
   // The participant's own phone: required when they register themselves, optional otherwise ("" = none).
   phone: string;
@@ -116,7 +116,7 @@ export async function registerParticipant(
       query: REGISTER_PARTICIPANT,
       variables: {
         token,
-        input: { ...input, middleName: input.middleName.trim() || null, phone: input.phone.trim() || null, ...terms },
+        input: { ...input, middleName: input.middleName?.trim() || null, phone: input.phone.trim() || null, ...terms },
         photo: null,
         idDocument: null,
       },
@@ -126,17 +126,26 @@ export async function registerParticipant(
   form.append("0", photo, "photo.jpg");
   form.append("1", idDocument, "id-document.jpg");
 
-  let body: { data?: { registerParticipant: { fullName: string } }; errors?: GraphQLErrorLike[] };
+  let res: Response;
   try {
-    const res = await fetch(API_URL, {
+    res = await fetch(API_URL, {
       method: "POST",
       body: form,
       credentials: "include",
       headers: { "x-csrf": "1" },
     });
+  } catch {
+    return NETWORK_ERROR; // no connection
+  }
+  let body: { data?: { registerParticipant: { fullName: string } }; errors?: GraphQLErrorLike[] };
+  try {
     body = await res.json();
   } catch {
-    return NETWORK_ERROR;
+    // The server answered, but not with JSON: a proxy in front of the API (nginx, Render…).
+    // Too large is a final "no" (smaller photos are needed); a server error is "try again later".
+    if (res.status === 413) return apiErrorFrom({ message: "", extensions: { code: "INVALID_PHOTO" } });
+    if (res.status >= 500) return apiErrorFrom({ message: "", extensions: { code: "INTERNAL_SERVER_ERROR" } });
+    return apiErrorFrom({ message: `The server refused the registration (HTTP ${res.status}).`, extensions: { code: "HTTP_ERROR" } });
   }
   if (body.errors?.length || !body.data) return apiErrorFrom(body.errors?.[0]);
   return body.data.registerParticipant;

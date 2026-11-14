@@ -31,6 +31,7 @@ export interface JudgeSheet {
   judge: { id: string; name: string } | null;
   questions: QuestionMarks[];
   sauti: number | null;
+  presence: boolean | null; // the judge's choice when 2+ questions are deleted; null when given by itself
   total: number | null;
   submitted: boolean;
   submittedAt: string | null;
@@ -67,6 +68,7 @@ const SHEET_FIELDS = gql`
       deleted
     }
     sauti
+    presence
     total
     submitted
     submittedAt
@@ -191,7 +193,7 @@ export const PARTICIPANT_SHEETS: TypedDocumentNode<
 
 export const SAVE_SHEET: TypedDocumentNode<
   { saveSheet: JudgeSheet },
-  { input: { participantId: string; questions: Marks[]; sauti: number | null; submit: boolean } }
+  { input: { participantId: string; questions: Marks[]; sauti: number | null; presence: boolean | null; submit: boolean } }
 > = gql`
   mutation SaveSheet($input: SaveSheetInput!) {
     saveSheet(input: $input) {
@@ -227,6 +229,15 @@ export const CREATE_ENVELOPE: TypedDocumentNode<{ createEnvelope: Envelope }, { 
   ${ENVELOPE_FIELDS}
 `;
 
+export const CREATE_RANDOM_ENVELOPES: TypedDocumentNode<{ createRandomEnvelopes: Envelope[] }, { count: number }> = gql`
+  mutation CreateRandomEnvelopes($count: Int!) {
+    createRandomEnvelopes(count: $count) {
+      ...EnvelopeFields
+    }
+  }
+  ${ENVELOPE_FIELDS}
+`;
+
 export const UPDATE_ENVELOPE: TypedDocumentNode<{ updateEnvelope: Envelope }, { id: string; questions: string[] }> = gql`
   mutation UpdateEnvelope($id: ID!, $questions: [String!]!) {
     updateEnvelope(id: $id, input: { questions: $questions }) {
@@ -239,6 +250,13 @@ export const UPDATE_ENVELOPE: TypedDocumentNode<{ updateEnvelope: Envelope }, { 
 export const DELETE_ENVELOPE: TypedDocumentNode<{ deleteEnvelope: boolean }, { id: string }> = gql`
   mutation DeleteEnvelope($id: ID!) {
     deleteEnvelope(id: $id)
+  }
+`;
+
+// Every envelope not drawn yet; returns how many were deleted (drawn ones stay).
+export const DELETE_UNUSED_ENVELOPES: TypedDocumentNode<{ deleteUnusedEnvelopes: number }, Record<string, never>> = gql`
+  mutation DeleteUnusedEnvelopes {
+    deleteUnusedEnvelopes
   }
 `;
 
@@ -274,7 +292,8 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 // One question out of 33 (sauti not given yet counts as 0).
 export const questionScore = (q: Marks, sauti: number | null, r: ScoringRules) => round2(questionPoints(q, sauti, r));
 
-// One judge's total out of 100: the questions plus presence. Null until sauti is given.
+// One judge's total out of 100: the questions plus the presence point, always given by itself.
+// Null until sauti is given.
 export function sheetTotal(questions: Marks[], sauti: number | null, r: ScoringRules) {
   if (sauti === null) return null;
   return round2(questions.reduce((sum, q) => sum + questionPoints(q, sauti, r), 0) + r.presencePoints);

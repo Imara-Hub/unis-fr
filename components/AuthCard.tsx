@@ -1,7 +1,9 @@
 "use client";
 
 import { Box, Center, Flex, Grid, Heading, Stack, Text } from "@chakra-ui/react";
+import Image from "next/image";
 import type { ReactNode } from "react";
+import { CompetitionTitle } from "@/components/brand/CompetitionTitle";
 import { Logo } from "@/components/brand/Logo";
 import { LOADING_DELAY_MS } from "@/components/Delayed";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -29,8 +31,13 @@ export function AuthCard({ panel = false, ...props }: AuthCardProps) {
 
 function Plain({ wide = false, ...props }: Omit<AuthCardProps, "panel">) {
   return (
-    <Flex minH="100dvh" justify="center" align={{ base: "stretch", md: "flex-start" }} p={{ base: "0", md: "6", xl: "10" }}>
+    <Flex minH="100dvh" direction="column" align="center" p={{ base: "0", md: "6", xl: "10" }}>
+      {/* The language button at the very top of the page, above the card. */}
+      <Flex w="full" maxW={wide ? "3xl" : "lg"} justify="flex-end" px={{ base: "4", md: "0" }} pt={{ base: "3", md: "0" }} pb={{ base: "3", md: "3" }}>
+        <LanguageSwitcher />
+      </Flex>
       <Flex
+        flex={{ base: "1", md: "initial" }}
         as="main"
         direction="column"
         w="full"
@@ -44,7 +51,6 @@ function Plain({ wide = false, ...props }: Omit<AuthCardProps, "panel">) {
         px={{ base: "5", sm: "8", md: "10" }}
         pt={{ base: "7", md: "9" }}
         pb="6"
-        mt={{ md: "4", xl: "6" }}
         // Comes in softly after the loading screen instead of popping in.
         animation="fade-in 0.4s ease-out, slide-from-bottom 0.4s ease-out"
         _motionReduce={{ animation: "none" }}
@@ -75,7 +81,8 @@ function WithPanel(props: Omit<AuthCardProps, "panel">) {
       >
         <IlluminatedPanel />
 
-        <Flex as="main" direction="column" px={{ base: "5", sm: "8", lg: "12", xl: "16" }} pt={{ base: "7", lg: "10" }} pb="6" minW="0">
+        <Flex as="main" direction="column" px={{ base: "5", sm: "8", lg: "12", xl: "16" }} pt={{ base: "4", lg: "5" }} pb="6" minW="0">
+          <TopBar />
           <Flex flex="1" align={{ base: "flex-start", lg: "center" }} py={{ base: "2", lg: "4" }}>
             <Box w="full" maxW="md" mx={{ base: "auto", lg: "0" }}>
               <Content {...props} />
@@ -91,10 +98,6 @@ function WithPanel(props: Omit<AuthCardProps, "panel">) {
 function Content({ eyebrow, title, subtitle, footer, top, children }: Omit<AuthCardProps, "panel" | "wide">) {
   return (
     <Stack w="full" gap="7" css={AUTH_FIELDS}>
-      {/* Every public page (login, signup, invite, registration) can switch language. */}
-      <Flex justify="flex-end" mb="-4">
-        <LanguageSwitcher />
-      </Flex>
       {top}
       <Stack gap="2">
         {eyebrow && (
@@ -124,6 +127,15 @@ function Content({ eyebrow, title, subtitle, footer, top, children }: Omit<AuthC
   );
 }
 
+// Every public page (login, signup, invite, registration) can switch language, from the top corner.
+function TopBar() {
+  return (
+    <Flex justify="flex-end" mb="4" mr={{ lg: "-6", xl: "-10" }}>
+      <LanguageSwitcher />
+    </Flex>
+  );
+}
+
 function Copyright({ pt }: { pt: string }) {
   return (
     <Text fontSize="xs" color="fg.subtle" textAlign="center" pt={pt} mt="auto">
@@ -149,30 +161,26 @@ const AUTH_FIELDS = {
   "& [aria-invalid=true]": { borderColor: "red.400" },
 };
 
-// Deep logo blue, gold star lattice and a gold frame like the opening page of a Mushaf:
-// Bismillah, the UNIS badge, the headline, and the gold مسابقة at the bottom.
+// The design of the competition's cover: royal blue with a gold frame, the Bismillah, the UNIS
+// badge and the association's name, the competition title, and the Quran at the bottom.
 function IlluminatedPanel() {
-  const { t } = useI18n();
   return (
     <Box
       position="relative"
       overflow="hidden"
-      bg="linear-gradient(160deg, #23305F 0%, #1A234E 50%, #121A40 100%)"
+      bg="radial-gradient(ellipse at 50% 55%, #123A9C 0%, #0B2A80 40%, #0A1D5C 100%)"
       color="white"
       rounded={{ base: "none", md: "2xl" }}
       roundedBottom="2xl"
       minH={{ base: "44", lg: "auto" }}
     >
-      <StarLattice color="#C99A35" opacity={0.28} />
-      {/* Calm the pattern behind the words. */}
-      <Box
-        position="absolute"
-        inset="0"
-        bg="linear-gradient(180deg, rgba(26,35,78,0.35) 0%, rgba(26,35,78,0.92) 45%, rgba(18,26,64,0.75) 100%)"
-      />
-      <Box position="absolute" inset="3" rounded="xl" borderWidth="1px" borderColor="gold.400/50" pointerEvents="none" />
+      {/* The star pattern, only at the top, fading out. */}
+      <Box position="absolute" insetX="0" top="0" h="45%" css={{ maskImage: "linear-gradient(to bottom, black, transparent)" }}>
+        <StarLattice color="#8FA6E0" opacity={0.16} />
+      </Box>
+      <Box position="absolute" inset={{ base: "2.5", lg: "4" }} rounded="xl" borderWidth="2px" borderColor="gold.400" pointerEvents="none" />
 
-      {/* Phones: a short band with the logo and name. */}
+      {/* Phones: a short band with the badge and the title. */}
       <Flex
         position="relative"
         display={{ base: "flex", lg: "none" }}
@@ -181,17 +189,12 @@ function IlluminatedPanel() {
         direction="column"
         align="center"
         justify="center"
-        gap="1"
+        gap="3"
+        px="8"
+        py="7"
       >
-        <Flex align="center" gap="3">
-          <Logo size={48} priority />
-          <Text fontFamily="display" fontSize="2xl" letterSpacing="0.06em">
-            UNIS
-          </Text>
-        </Flex>
-        <Text lang="ar" dir="rtl" fontFamily="arabic" fontWeight="bold" fontSize="2xl" color="gold.300">
-          مسابقة
-        </Text>
+        <Badge size={60} />
+        <CompetitionTitle maxW="xs" priority />
       </Flex>
 
       {/* Computers */}
@@ -200,42 +203,36 @@ function IlluminatedPanel() {
         display={{ base: "none", lg: "flex" }}
         h="full"
         direction="column"
+        align="center"
         justify="space-between"
-        px={{ lg: "10", xl: "14" }}
+        textAlign="center"
+        px={{ lg: "12", xl: "16" }}
         py="12"
-        gap="8"
+        gap="6"
       >
-        <Stack gap="6">
-          <Text lang="ar" dir="rtl" fontFamily="arabic" fontSize="xl" color="gold.300" textAlign="center" opacity={0.9}>
-            بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+        {/* The calligraphic Bismillah ligature (﷽), as on the competition's cover. */}
+        <Text lang="ar" fontFamily="bismillah" fontSize="3xl" lineHeight="1.4" whiteSpace="nowrap" aria-label="بسم الله الرحمن الرحيم">
+          {"﷽"}
+        </Text>
+        <Stack align="center" gap="5">
+          <Badge size={150} />
+          <Text fontSize="sm" fontStyle="italic" letterSpacing="0.06em" color="whiteAlpha.900">
+            ASSOCIATION « UNION DES INITIATIVES SOLIDAIRES »
           </Text>
-          <Stack align="center" gap="2">
-            <Logo size={120} priority />
-            <Text fontFamily="display" fontSize="2xl" letterSpacing="0.16em">
-              UNIS
-            </Text>
-          </Stack>
-          <Stack gap="5">
-            <Box w="12" h="1px" bg="gold.400" />
-            <Heading as="p" fontFamily="display" fontSize={{ lg: "4xl", xl: "5xl" }} lineHeight="1.1" letterSpacing="-0.015em">
-              {t.panel.headline}
-            </Heading>
-            <Text fontSize="md" color="whiteAlpha.800" maxW="sm">
-              {t.panel.text}
-            </Text>
-          </Stack>
         </Stack>
-
-        <Box>
-          <Text lang="ar" dir="rtl" fontFamily="arabic" fontWeight="bold" fontSize="6xl" lineHeight="1.2" color="gold.300">
-            مسابقة
-          </Text>
-          <Text fontSize="xs" letterSpacing="0.3em" textTransform="uppercase" color="whiteAlpha.700">
-            {t.panel.tagline}
-          </Text>
-        </Box>
+        <CompetitionTitle maxW="md" priority />
+        <Image src="/quran-white.png" alt="" width={225} height={247} style={{ width: 104, height: "auto" }} />
       </Flex>
     </Box>
+  );
+}
+
+// The UNIS badge on a white disc, so it reads on the blue.
+function Badge({ size }: { size: number }) {
+  return (
+    <Center bg="white" rounded="full" p="1" boxShadow="0 10px 30px rgba(0,0,0,0.35)">
+      <Logo size={size} priority />
+    </Center>
   );
 }
 

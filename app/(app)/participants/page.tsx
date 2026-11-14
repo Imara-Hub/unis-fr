@@ -42,6 +42,7 @@ import {
   type ParticipantStatus,
   type Settings,
 } from "@/lib/graphql/participants";
+import { ME } from "@/lib/graphql/auth";
 import { formatPhone, reachPhone } from "@/lib/phone";
 import type { AppKey } from "@/lib/i18n";
 import { Copy, Download, Ellipsis, Eye, LayoutGrid, List, Phone, Search, SlidersHorizontal, X } from "lucide-react";
@@ -114,6 +115,8 @@ function readView(): View {
 const uniqueSorted = (values: string[]) => [...new Set(values)].sort((a, b) => a.localeCompare(b));
 
 export default function ParticipantsPage() {
+  // Only the admin can search by phone (nobody else sees phones).
+  const searchByPhone = useQuery(ME).data?.me?.role === "ADMIN";
   const [status, setStatus] = useState<ParticipantStatus | null>(null);
   const [searchText, setSearchText] = useState("");
   const search = useDebounced(searchText.trim(), 300);
@@ -272,7 +275,7 @@ export default function ParticipantsPage() {
               <Input
                 size="sm"
                 bg="white"
-                placeholder={tx("Search name, phone, halaqa, commune")}
+                placeholder={searchByPhone ? tx("Search name, phone, halaqa, commune") : tx("Search name, halaqa, commune")}
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
               />
@@ -445,6 +448,8 @@ function activeChips(f: Filters, tx: ReturnType<typeof useI18n>["tx"]) {
 function ParticipantList({ participants, settings }: { participants: ParticipantRow[]; settings?: Settings }) {
   const router = useRouter();
   const { tx } = useI18n();
+  // Phones are for the admin only: judges and staff get no phone column and no call menu.
+  const isAdmin = useQuery(ME).data?.me?.role === "ADMIN";
   return (
     <>
       <Table.ScrollArea display={{ base: "none", md: "block" }}>
@@ -453,7 +458,7 @@ function ParticipantList({ participants, settings }: { participants: Participant
             <Table.Row bg="white/50">
               <HeaderCell ps="5">{tx("Participant")}</HeaderCell>
               <HeaderCell>{tx("Place")}</HeaderCell>
-              <HeaderCell>{tx("Phone")}</HeaderCell>
+              {isAdmin && <HeaderCell>{tx("Phone")}</HeaderCell>}
               <HeaderCell>{tx("Points")}</HeaderCell>
               <HeaderCell>{tx("Result")}</HeaderCell>
               <HeaderCell pe="4" w="12" />
@@ -488,14 +493,16 @@ function ParticipantList({ participants, settings }: { participants: Participant
                       {p.commune}, {p.province}
                     </Text>
                   </Table.Cell>
-                  <Table.Cell whiteSpace="nowrap" color="fg.muted" fontSize="sm">
-                    {formatPhone(reachPhone(p))}
-                    {!p.phone && p.contact && (
-                      <Text fontSize="xs" truncate maxW="40">
-                        {tx("via {name}", { name: p.contact.name })}
-                      </Text>
-                    )}
-                  </Table.Cell>
+                  {isAdmin && (
+                    <Table.Cell whiteSpace="nowrap" color="fg.muted" fontSize="sm">
+                      {formatPhone(reachPhone(p))}
+                      {!p.phone && p.contact && (
+                        <Text fontSize="xs" truncate maxW="40">
+                          {tx("via {name}", { name: p.contact.name })}
+                        </Text>
+                      )}
+                    </Table.Cell>
+                  )}
                   <Table.Cell>
                     <PointsCell score={p.score} settings={settings} />
                   </Table.Cell>
@@ -503,7 +510,7 @@ function ParticipantList({ participants, settings }: { participants: Participant
                     <StatusBadge status={p.status} finalist={p.finalist} />
                   </Table.Cell>
                   <Table.Cell pe="4" onClick={(e) => e.stopPropagation()}>
-                    <RowMenu participant={p} />
+                    {isAdmin && <RowMenu participant={p} />}
                   </Table.Cell>
                 </Table.Row>
               );
@@ -538,7 +545,7 @@ function ParticipantList({ participants, settings }: { participants: Participant
                 </Stack>
               </NextLink>
             </Flex>
-            <RowMenu participant={p} />
+            {isAdmin && <RowMenu participant={p} />}
           </Flex>
         ))}
       </Stack>

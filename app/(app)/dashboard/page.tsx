@@ -42,7 +42,7 @@ import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { JudgingDesk } from "@/components/JudgingDesk";
 import { ReviewBadge, StatusBadge } from "@/components/StatusBadge";
 import { readApiError } from "@/lib/errors";
-import { GREETING, GREETING_AR } from "@/lib/greeting";
+import { GREETING } from "@/lib/greeting";
 import { ME, type User } from "@/lib/graphql/auth";
 import { PARTICIPANT_COUNTS, PARTICIPANTS, type Counts, type Settings } from "@/lib/graphql/participants";
 import { REGISTRATION_LINK, REGISTRATION_TERMS } from "@/lib/graphql/registration";
@@ -157,7 +157,7 @@ function EmptyState({ icon: Icon, title, text, action }: { icon: LucideIcon; tit
 
 // ——— Sections ———
 
-// Blue banner with the gold lattice: today, the greeting in Arabic and in Latin letters, main actions.
+// Blue banner with the gold lattice: today, the greeting, main actions.
 function Welcome({ user }: { user: User }) {
   const firstName = user.name.split(" ")[0];
   const { tx, locale } = useI18n();
@@ -194,18 +194,6 @@ function Welcome({ user }: { user: User }) {
         <Stack gap="1" maxW="xl">
           <Text fontSize="xs" fontWeight="semibold" letterSpacing="0.18em" textTransform="uppercase" color="gold.300">
             {today}
-          </Text>
-          <Text
-            lang="ar"
-            dir="rtl"
-            fontFamily="arabic"
-            fontWeight="bold"
-            fontSize={{ base: "4xl", md: "5xl" }}
-            lineHeight="1.5"
-            color="gold.300"
-            textAlign="start"
-          >
-            {GREETING_AR}
           </Text>
           <Heading as="h1" fontFamily="display" fontSize={{ base: "2xl", md: "4xl" }} lineHeight="1.15">
             {GREETING}, {firstName}

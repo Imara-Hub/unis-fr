@@ -13,7 +13,7 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { Link2Off, MailOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, Hourglass, Link2Off, MailOpen } from "lucide-react";
 import { useParams } from "next/navigation";
 import {
   Suspense,
@@ -36,9 +36,7 @@ import {
 } from "@/lib/graphql/judging";
 import { useI18n } from "@/lib/i18n";
 
-// The stage screen: a tablet on stage, opened with the secret link the admin creates.
-// The participant who was called picks a closed envelope here. This screen never receives any
-// question (the server does not send them): only judges, the admin and staff see them.
+
 export default function StageScreenPage() {
   return (
     <Suspense fallback={<FullPageSpinner />}>
@@ -133,7 +131,8 @@ function StageScreen() {
         overflowY="auto"
         direction="column"
         align="center"
-        justify="center"
+        // "safe": content taller than the screen starts at the top instead of being cut off there.
+        justify="safe center"
         px={{ base: "4", md: "10" }}
         pb={{ base: "6", md: "10" }}
       >
@@ -170,9 +169,15 @@ function StageScreen() {
               },
             )}
           />
+        ) : !view.participant ? (
+          // Nobody called yet: no envelopes, they appear when the judges call the next participant.
+          <Message
+            icon={<Hourglass size={38} aria-hidden />}
+            title={tx("Waiting for the next participant")}
+            text={tx("The envelopes appear here when the judges call the next participant.")}
+          />
         ) : (
-          // The envelopes are always on screen; they can be tapped once a participant is called.
-          <Draw key={view.participant?.id ?? "waiting"} token={token} view={view} />
+          <Draw key={view.participant.id} token={token} view={view} />
         )}
       </Flex>
     </Flex>
@@ -226,10 +231,13 @@ function Message({
   );
 }
 
-// The participant taps a closed envelope, then confirms on the same screen. Before anyone is
-// called, the same envelopes are on screen but cannot be tapped.
+// Envelopes per page: two rows of five (20 envelopes = 2 pages), so a page fits the tablet.
+const PER_PAGE = 10;
+
+// The called participant taps a closed envelope, then confirms on the same screen.
 function Draw({ token, view }: { token: string; view: StageScreenView }) {
   const [chosen, setChosen] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [draw, { loading }] = useMutation(STAGE_SCREEN_DRAW, {
     update(cache, { data }) {
@@ -238,8 +246,10 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
     },
   });
   const { tx } = useI18n();
-  const waiting = !view.participant;
   const name = view.participant ? firstName(view.participant.fullName) : "";
+  const pages = Math.max(1, Math.ceil(view.slots.length / PER_PAGE));
+  const shownPage = Math.min(page, pages - 1); // fewer envelopes now (one was drawn or deleted)
+  const shown = view.slots.slice(shownPage * PER_PAGE, (shownPage + 1) * PER_PAGE);
   // The envelope they had chosen was taken by the judges' backup draw, or deleted.
   const stillThere =
     chosen && view.slots.some((s) => s.id === chosen) ? chosen : null;
@@ -259,8 +269,7 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
     <Stack align="center" gap={{ base: "6", md: "8" }} w="full" maxW="6xl">
       {/* The title, always; the name of who is choosing once a participant is called. */}
       <Stack align="center" textAlign="center" gap="2" animation="fade-in 0.4s ease-out">
-        {!waiting && (
-          <Text
+        <Text
             fontSize="sm"
             fontWeight="semibold"
             letterSpacing="0.18em"
@@ -269,7 +278,6 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
           >
             {tx("On stage")} · {name}
           </Text>
-        )}
         <Heading
           as="h1"
           fontFamily="display"
@@ -278,11 +286,9 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
         >
           {tx("Choose your question")}
         </Heading>
-        {!waiting && (
-          <Text fontSize={{ base: "md", md: "xl" }} color="whiteAlpha.800">
-            {tx("Tap one closed envelope. Its questions go to the judges.")}
-          </Text>
-        )}
+        <Text fontSize={{ base: "md", md: "xl" }} color="whiteAlpha.800">
+          {tx("Tap one closed envelope. Its questions go to the judges.")}
+        </Text>
       </Stack>
 
       {error && (
@@ -306,24 +312,75 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
         </Text>
       ) : (
         <SimpleGrid
-          columns={{ base: 2, md: 3, xl: 4 }}
+          key={shownPage} // each page fades in
+          columns={{ base: 2, md: 5 }}
           gap={{ base: "5", md: "8", xl: "10" }}
           w="full"
           px={{ base: "1", md: "2" }}
           py="2"
         >
-          {view.slots.map((slot, i) => (
+          {shown.map((slot, i) => (
             <EnvelopeCard
               key={slot.id}
               index={i}
               label={tx("Envelope")}
               selected={slot.id === stillThere}
               faded={Boolean(stillThere) && slot.id !== stillThere}
-              disabled={loading || waiting || Boolean(stillThere)}
+              disabled={loading || Boolean(stillThere)}
               onPick={() => setChosen(slot.id)}
             />
           ))}
         </SimpleGrid>
+      )}
+
+      {pages > 1 && (
+        <Flex align="center" gap={{ base: "3", md: "5" }}>
+          <Button
+            size="lg"
+            variant="outline"
+            bg="whiteAlpha.100"
+            color="gold.300"
+            borderColor="gold.400"
+            _hover={{ bg: "whiteAlpha.200" }}
+            _disabled={{ opacity: 0.3, cursor: "not-allowed" }}
+            disabled={shownPage === 0}
+            aria-label={tx("Previous envelopes")}
+            onClick={() => setPage(shownPage - 1)}
+          >
+            <ChevronLeft size={20} aria-hidden />
+          </Button>
+          <Flex gap="2" align="center">
+            {Array.from({ length: pages }, (_, k) => (
+              <chakra.button
+                key={k}
+                type="button"
+                aria-label={tx("Page {n}", { n: k + 1 })}
+                aria-current={k === shownPage ? "page" : undefined}
+                onClick={() => setPage(k)}
+                w={k === shownPage ? "8" : "3"}
+                h="3"
+                rounded="full"
+                bg={k === shownPage ? "gold.400" : "whiteAlpha.400"}
+                transition="all 0.2s"
+                cursor="pointer"
+              />
+            ))}
+          </Flex>
+          <Button
+            size="lg"
+            variant="outline"
+            bg="whiteAlpha.100"
+            color="gold.300"
+            borderColor="gold.400"
+            _hover={{ bg: "whiteAlpha.200" }}
+            _disabled={{ opacity: 0.3, cursor: "not-allowed" }}
+            disabled={shownPage === pages - 1}
+            aria-label={tx("More envelopes")}
+            onClick={() => setPage(shownPage + 1)}
+          >
+            <ChevronRight size={20} aria-hidden />
+          </Button>
+        </Flex>
       )}
 
       {/* How many are left in the draw. */}
@@ -335,7 +392,7 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
 
       {/* Confirm over the whole screen, so the buttons are always in view (the grid can be taller
           than the tablet), and no other envelope can be tapped meanwhile. */}
-      {!waiting && stillThere && (
+      {stillThere && (
         <Flex
           position="fixed"
           inset="0"
@@ -437,6 +494,11 @@ function useStageScreenLive(token: string, onChange: () => void) {
       const es = new EventSource(url);
       source = es;
       es.onopen = refresh; // after a reconnect we may have missed a change
+      // A failure the browser will not retry by itself (an error status, e.g. while the API
+      // restarts): forget this stream so the 20 s poll opens a new one.
+      es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED && source === es) source = null;
+      };
       es.addEventListener("next", refresh);
       // The link was replaced: stop listening; the reload shows "link not valid".
       es.addEventListener("complete", () => {
@@ -446,7 +508,12 @@ function useStageScreenLive(token: string, onChange: () => void) {
       });
     };
     open();
-    const poll = setInterval(refresh, 20_000);
+    // Every 20 s: reload, and listen again if the stream was ended (a passing error must not
+    // leave the tablet on the slow reload for the rest of the day).
+    const poll = setInterval(() => {
+      open();
+      refresh();
+    }, 20_000);
     return () => {
       clearTimeout(timer);
       clearInterval(poll);

@@ -3,27 +3,16 @@
 import { useLazyQuery } from "@apollo/client/react";
 import { Badge, Box, Button, Card, Flex, Input, Stack, Text } from "@chakra-ui/react";
 import { Search } from "lucide-react";
-import NextImage from "next/image";
 import { useState, type FormEvent } from "react";
 import { AuthCard } from "@/components/AuthCard";
 import { ErrorAlert } from "@/components/ErrorAlert";
+import { CompetitionBand } from "@/components/brand/CompetitionTitle";
 import { FormField } from "@/components/FormField";
 import { readApiError } from "@/lib/errors";
 import { RESULT_LOOKUP, type PublicResult } from "@/lib/graphql/participants";
 import { useI18n } from "@/lib/i18n";
 
-const banner = (
-  <Box mx={{ base: "-1", md: "0" }}>
-    <NextImage
-      src="/form-banner.png"
-      alt="Grand concours de mémorisation du Saint Coran au Burundi, 7e édition, 1448 H – 2027 M"
-      width={1600}
-      height={285}
-      priority
-      style={{ width: "100%", height: "auto" }}
-    />
-  </Box>
-);
+const banner = <CompetitionBand />;
 
 // Public: a participant (or their parent / school) types the name to see if they passed.
 export default function ResultsPage() {

@@ -13,6 +13,7 @@ import { PARTICIPANT_SHEETS, STAGE, STAGE_QUEUE, type JudgeSheet } from "@/lib/g
 import { PARTICIPANT_COUNTS } from "@/lib/graphql/participants";
 import { useI18n } from "@/lib/i18n";
 import { MARK_TYPES } from "@/lib/marks";
+import { MarkName } from "@/components/MarkName";
 
 // Admin and staff watch the competition live: who is reciting, the questions they drew and each
 // judge's sheet as it is being marked. Only the judges run the stage (call, draw, mark).
@@ -127,7 +128,7 @@ function LiveSheet({ sheet: s }: { sheet: JudgeSheet }) {
             <Table.ColumnHeader px="1" />
             {MARK_TYPES.map((t) => (
               <Table.ColumnHeader key={t.kind} px="1" textAlign="center" fontSize="xs" color={`${t.palette}.700`}>
-                {t.name}
+                <MarkName mark={t} />
               </Table.ColumnHeader>
             ))}
             <Table.ColumnHeader px="1" textAlign="end" fontSize="xs">

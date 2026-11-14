@@ -7,6 +7,8 @@ import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { ageOf } from "@/lib/dates";
 import type { ScoringRules } from "@/lib/graphql/judging";
 import { useI18n } from "@/lib/i18n";
+import { questionLabel } from "@/lib/quran/label";
+import { MarkName } from "@/components/MarkName";
 import { MARK_TYPES } from "@/lib/marks";
 
 export const NAVY_GRADIENT = "linear-gradient(135deg, #23305F 0%, #1A234E 60%, #121A40 100%)";
@@ -132,7 +134,7 @@ export function EnvelopeQuestions({ number, questions }: { number: number; quest
               {tx("Question {n}", { n: i + 1 })}
             </Text>
             <Text fontFamily="display" fontSize={{ base: "lg", md: "xl" }} color="brand.900" mt="1">
-              {q}
+              {questionLabel(q)}
             </Text>
           </Box>
         ))}
@@ -145,7 +147,7 @@ export function EnvelopeQuestions({ number, questions }: { number: number; quest
 export function RulesCard({ rules: r }: { rules: ScoringRules }) {
   const { tx } = useI18n();
   // Fath, Tanbih, Tajweed, Kusita: the same order and colours as on the judges' sheet.
-  const rows = MARK_TYPES.map((t) => ({ sign: t.sign, name: t.name, palette: t.palette, text: tx(t.rule), points: t.penalty(r) }));
+  const rows = MARK_TYPES.map((t) => ({ sign: t.sign, mark: t, palette: t.palette, text: tx(t.rule), points: t.penalty(r) }));
   return (
     <Card.Root>
       <Card.Body p={{ base: "4", md: "6" }} gap="4">
@@ -160,7 +162,7 @@ export function RulesCard({ rules: r }: { rules: ScoringRules }) {
               </Flex>
               <Box minW="0">
                 <Text fontWeight="semibold" color="brand.900">
-                  {row.name}{" "}
+                  <MarkName mark={row.mark} />{" "}
                   <Badge colorPalette="red" variant="subtle">
                     −{row.points}
                   </Badge>
