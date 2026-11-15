@@ -82,6 +82,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   // takes over right away, without a hydration mismatch.
   const lang = useSyncExternalStore(subscribe, readLang, () => DEFAULT_LANG);
   // Before the children render, so helpers outside React (errors, dates) use the same language.
+  // Deliberately during render, not in an effect: children call readApiError(...) in their own
+  // render, and an effect would leave them one language behind on every switch. The assignment is
+  // idempotent, so a repeated or discarded render (StrictMode, concurrent mode) does no harm.
   setCurrentLang(lang);
 
   useEffect(() => {

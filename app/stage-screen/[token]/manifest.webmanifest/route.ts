@@ -17,9 +17,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     background_color: "#151C42",
     theme_color: "#151C42",
     icons: [
-      { src: "/icon.png", sizes: "256x256", type: "image/png" },
-      { src: "/logo.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icons/maskable-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
+      { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
   return new Response(JSON.stringify(manifest), {

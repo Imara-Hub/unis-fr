@@ -1199,7 +1199,12 @@ function Section({ number, title, children }: { number: number; title: string; c
   );
 }
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+// Today in the phone's own time zone (toISOString would give the UTC date, a day off at night).
+const todayIso = () => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 // The earliest birthday that is still MAX_AGE or younger today.
 const oldestBirthIso = () => {
   const d = new Date();

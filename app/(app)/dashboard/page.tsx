@@ -51,9 +51,10 @@ import { useI18n } from "@/lib/i18n";
 
 export default function OverviewPage() {
   const { data } = useQuery(ME);
-  const counts = useQuery(PARTICIPANT_COUNTS);
-  const { tx } = useI18n();
   const user = data?.me;
+  // Judges have their own home and may not read the counts: no request for them.
+  const counts = useQuery(PARTICIPANT_COUNTS, { skip: !user || user.role === "JUDGE" });
+  const { tx } = useI18n();
   if (!user) return null;
   // Judges get their own home: the judging desk, not the overview.
   if (user.role === "JUDGE") return <JudgingDesk />;

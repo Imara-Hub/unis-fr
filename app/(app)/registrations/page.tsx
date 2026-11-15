@@ -39,7 +39,8 @@ function Registrations() {
   const [review, setReview] = useState<ReviewStatus>("PENDING_REVIEW");
   const [searchText, setSearchText] = useState("");
   const counts = useQuery(PARTICIPANT_COUNTS);
-  const list = useQuery(PARTICIPANTS, { variables: { review } });
+  // The same variable shape as the other pages, so one cache entry per view is shared.
+  const list = useQuery(PARTICIPANTS, { variables: { status: null, search: null, review } });
   const { tx } = useI18n();
 
   const loaded = list.data?.participants ?? list.previousData?.participants;

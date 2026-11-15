@@ -18,9 +18,14 @@ const bismillah = Amiri({ subsets: ["arabic"], weight: ["400", "700"], variable:
 export const metadata: Metadata = {
   title: { default: "Musabaqa", template: "%s · Musabaqa" },
   description: "Registration and results of the Quran competition in Burundi.",
+  applicationName: "Musabaqa",
+  // Installable (app/manifest.ts is linked by Next). On iPhone/iPad, "Add to Home Screen" then
+  // opens it full screen under this name.
+  appleWebApp: { capable: true, title: "Musabaqa", statusBarStyle: "default" },
+  formatDetection: { telephone: false },
 };
 
-export const viewport: Viewport = { themeColor: "#1A234E" };
+export const viewport: Viewport = { themeColor: "#1A234E", width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

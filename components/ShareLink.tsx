@@ -8,8 +8,12 @@ import { useI18n } from "@/lib/i18n";
 
 // Is this a link only this computer can open? Then phones that receive it will fail.
 export function isLocalLink(url: string) {
-  const host = new URL(url).hostname;
-  return host === "localhost" || host === "127.0.0.1";
+  try {
+    const host = new URL(url).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  } catch {
+    return false; // a relative link (server render, before the origin is known)
+  }
 }
 
 // A link to share: the address, Copy, Share on WhatsApp, and optionally a QR code to scan.

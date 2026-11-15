@@ -185,6 +185,12 @@ function ProfileSection({ user }: { user: User }) {
   const client = useApolloClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(user.name);
+  // Renamed elsewhere (another tab, a refetch): the field follows the saved name.
+  const [savedName, setSavedName] = useState(user.name);
+  if (savedName !== user.name) {
+    setSavedName(user.name);
+    setName(user.name);
+  }
   const [nameError, setNameError] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -402,12 +408,17 @@ function CompetitionSection() {
   );
 }
 
+const noSubscribe = () => () => {};
+
 // The public results page (/results): hidden until the admin publishes, then anyone can type a name.
 function PublishResults({ settings }: { settings: Settings }) {
   const { tx } = useI18n();
   const [setPublished, { loading, error }] = useMutation(SET_RESULTS_PUBLISHED, { refetchQueries: [SETTINGS] });
   const published = Boolean(settings.resultsPublished);
-  const url = typeof window === "undefined" ? "/results" : `${window.location.origin}/results`;
+  // The page's own origin: empty on the server and the first client render (so they agree),
+  // then the real one.
+  const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
+  const url = `${origin}/results`;
 
   async function toggle() {
     const ok = await confirmDialog({
