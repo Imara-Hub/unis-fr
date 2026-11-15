@@ -28,8 +28,10 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { readApiError } from "@/lib/errors";
 import type { Role } from "@/lib/graphql/auth";
 import { SETTINGS } from "@/lib/graphql/participants";
-import { REMOVE_USER, SET_USER_ACTIVE, TEAM, UPDATE_USER, type InvitableRole, type TeamMember } from "@/lib/graphql/staff";
-import { CalendarDays, CirclePause, CirclePlay, Ellipsis, Mail, Pencil, Trash2 } from "lucide-react";
+import { REMOVE_USER, RESET_USER_PASSWORD, SET_USER_ACTIVE, TEAM, UPDATE_USER, type InvitableRole, type TeamMember } from "@/lib/graphql/staff";
+import { CalendarDays, CirclePause, CirclePlay, Copy, Ellipsis, KeyRound, Mail, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { CopyButton } from "@/components/CopyButton";
+import { GREETING } from "@/lib/greeting";
 import { useI18n } from "@/lib/i18n";
 
 // Colours per role, matching the role badges: card band, avatar ring, section stripe.
@@ -46,6 +48,7 @@ export function TeamMembers({ showAdmin = false, framed = false, empty }: { show
   const settings = useQuery(SETTINGS);
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [removing, setRemoving] = useState<TeamMember | null>(null);
+  const [resetting, setResetting] = useState<TeamMember | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [setActive] = useMutation(SET_USER_ACTIVE);
   const { tx } = useI18n();
@@ -83,6 +86,7 @@ export function TeamMembers({ showAdmin = false, framed = false, empty }: { show
                   member={u}
                   onEdit={() => setEditing(u)}
                   onToggle={() => toggleActive(u)}
+                  onResetPassword={() => setResetting(u)}
                   onRemove={() => setRemoving(u)}
                 />
               ))}
@@ -100,6 +104,7 @@ export function TeamMembers({ showAdmin = false, framed = false, empty }: { show
 
       {editing && <EditMemberDialog member={editing} onClose={() => setEditing(null)} />}
       {removing && <RemoveMemberDialog member={removing} onClose={() => setRemoving(null)} />}
+      {resetting && <ResetPasswordDialog member={resetting} onClose={() => setResetting(null)} />}
     </>
   );
 }
@@ -167,11 +172,13 @@ function MemberCard({
   member: u,
   onEdit,
   onToggle,
+  onResetPassword,
   onRemove,
 }: {
   member: TeamMember;
   onEdit: () => void;
   onToggle: () => void;
+  onResetPassword: () => void;
   onRemove: () => void;
 }) {
   const tone = TONE[u.role];
@@ -215,6 +222,10 @@ function MemberCard({
                   <Menu.Item value="active" onSelect={onToggle}>
                     {u.isActive ? <PauseIcon /> : <CirclePlay size={16} aria-hidden />}
                     {u.isActive ? tx("Deactivate") : tx("Reactivate")}
+                  </Menu.Item>
+                  <Menu.Item value="password" onSelect={onResetPassword}>
+                    <KeyRound size={16} aria-hidden />
+                    {tx("Forgotten password")}
                   </Menu.Item>
                   <Menu.Separator />
                   <Menu.Item value="remove" color="fg.error" _highlighted={{ bg: "bg.error", color: "fg.error" }} onSelect={onRemove}>
@@ -376,6 +387,114 @@ function RemoveMemberDialog({ member, onClose }: { member: TeamMember; onClose: 
               <Button colorPalette="red" loading={loading} onClick={onRemove}>
                 {tx("Remove")}
               </Button>
+            </Dialog.Footer>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Portal>
+    </Dialog.Root>
+  );
+}
+
+// A judge or staff member forgot their password: the admin gives them a temporary one. Two steps
+// on the same dialog: confirm (they are logged out everywhere), then the password, shown once,
+// with Copy and WhatsApp. Closing it is final: the password cannot be shown again.
+function ResetPasswordDialog({ member, onClose }: { member: TeamMember; onClose: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState<string | null>(null);
+  const [reset, { loading }] = useMutation(RESET_USER_PASSWORD);
+  const { tx } = useI18n();
+  const first = member.name.split(" ")[0]!;
+
+  async function onReset() {
+    setError(null);
+    try {
+      const res = await reset({ variables: { userId: member.id } });
+      setPassword(res.data?.resetUserPassword.temporaryPassword ?? null);
+    } catch (err) {
+      setError(readApiError(err).message);
+    }
+  }
+
+  const whatsapp = password
+    ? `https://wa.me/?text=${encodeURIComponent(
+        `${GREETING} ${first}! ${tx("Your new temporary password for Musabaqa:")}\n${password}\n${tx("Log in with it, then choose your own password in Settings, Password.")}`,
+      )}`
+    : "";
+
+  return (
+    <Dialog.Root open onOpenChange={(e) => !e.open && onClose()} placement="center" role={password ? "dialog" : "alertdialog"}>
+      <Portal>
+        <Dialog.Backdrop />
+        <Dialog.Positioner px="4">
+          <Dialog.Content borderTopWidth="3px" borderTopColor="gold.400">
+            <Dialog.Header>
+              <Dialog.Title color="brand.900">
+                {password ? tx("Temporary password for {name}", { name: member.name }) : tx("{name} forgot their password?", { name: member.name })}
+              </Dialog.Title>
+            </Dialog.Header>
+            <Dialog.Body>
+              <Stack gap="3">
+                <ErrorAlert message={error} />
+                {password ? (
+                  <>
+                    <Box
+                      px="4"
+                      py="3"
+                      rounded="md"
+                      bg="bg.subtle"
+                      borderWidth="1px"
+                      borderStyle="dashed"
+                      borderColor="gold.400"
+                      fontFamily="mono"
+                      fontSize="2xl"
+                      fontWeight="semibold"
+                      color="brand.900"
+                      textAlign="center"
+                      letterSpacing="0.08em"
+                      userSelect="all"
+                    >
+                      {password}
+                    </Box>
+                    <Flex gap="2" wrap="wrap">
+                      <CopyButton value={password} colorPalette="brand" icon={<Copy size={16} aria-hidden />}>
+                        {tx("Copy password")}
+                      </CopyButton>
+                      <Button asChild variant="outline" colorPalette="green">
+                        <a href={whatsapp} target="_blank" rel="noreferrer">
+                          <MessageCircle size={16} aria-hidden />
+                          {tx("Send on WhatsApp")}
+                        </a>
+                      </Button>
+                    </Flex>
+                    <Text fontSize="sm" color="fg.muted">
+                      {tx("Shown only once: copy it or send it now. {name} logs in with it, then chooses their own password in Settings, Password.", { name: first })}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text>{tx("A temporary password is created for {name}. The old one stops working and they are logged out on every device.", { name: member.name })}</Text>
+                    <Text fontSize="sm" color="fg.muted">
+                      {tx("You then give it to them yourself (WhatsApp, or in person). Any login lock from their wrong tries is lifted.")}
+                    </Text>
+                  </>
+                )}
+              </Stack>
+            </Dialog.Body>
+            <Dialog.Footer>
+              {password ? (
+                <Button colorPalette="brand" onClick={onClose}>
+                  {tx("Done")}
+                </Button>
+              ) : (
+                <>
+                  <Button variant="ghost" onClick={onClose}>
+                    {tx("Cancel")}
+                  </Button>
+                  <Button colorPalette="brand" loading={loading} onClick={onReset}>
+                    {tx("Create a temporary password")}
+                  </Button>
+                </>
+              )}
             </Dialog.Footer>
           </Dialog.Content>
         </Dialog.Positioner>

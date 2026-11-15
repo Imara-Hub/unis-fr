@@ -109,6 +109,22 @@ export const REMOVE_USER: TypedDocumentNode<{ removeUser: boolean }, { userId: s
   }
 `;
 
+// Admin only. The temporary password comes back once and is never stored in clear.
+export const RESET_USER_PASSWORD: TypedDocumentNode<
+  { resetUserPassword: { user: { id: string; name: string }; temporaryPassword: string } },
+  { userId: string }
+> = gql`
+  mutation ResetUserPassword($userId: ID!) {
+    resetUserPassword(userId: $userId) {
+      user {
+        id
+        name
+      }
+      temporaryPassword
+    }
+  }
+`;
+
 export const INVITATION_CHECK: TypedDocumentNode<
   { invitationCheck: { valid: boolean; role: InvitableRole | null } },
   { token: string }

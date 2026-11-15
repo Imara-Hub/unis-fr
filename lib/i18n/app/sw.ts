@@ -582,6 +582,22 @@ export const appSw: Record<AppKey, string> = {
   "Deactivate": "Simamisha",
   "Reactivate": "Rudisha",
   "Remove from the team": "Ondoa kwenye timu",
+  // Forgotten password (Team page)
+  "Forgotten password": "Nenosiri limesahaulika",
+  "{name} forgot their password?": "{name} amesahau nenosiri lake?",
+  "Temporary password for {name}": "Nenosiri la muda la {name}",
+  "A temporary password is created for {name}. The old one stops working and they are logged out on every device.":
+    "Nenosiri la muda linatengenezwa kwa ajili ya {name}. La zamani linaacha kufanya kazi na anatolewa kwenye vifaa vyote.",
+  "You then give it to them yourself (WhatsApp, or in person). Any login lock from their wrong tries is lifted.":
+    "Kisha unampa wewe mwenyewe (WhatsApp, au ana kwa ana). Kizuizi chochote cha kuingia kutokana na majaribio yake yasiyo sahihi kinaondolewa.",
+  "Create a temporary password": "Tengeneza nenosiri la muda",
+  "Copy password": "Nakili nenosiri",
+  "Send on WhatsApp": "Tuma kwenye WhatsApp",
+  "Shown only once: copy it or send it now. {name} logs in with it, then chooses their own password in Settings, Password.":
+    "Linaonyeshwa mara moja tu: linakili au litume sasa. {name} anaingia nalo, kisha anachagua nenosiri lake mwenyewe katika Mipangilio, Nenosiri.",
+  "Your new temporary password for Musabaqa:": "Nenosiri lako jipya la muda la Musabaqa:",
+  "Log in with it, then choose your own password in Settings, Password.":
+    "Ingia nalo, kisha chagua nenosiri lako mwenyewe katika Mipangilio, Nenosiri.",
   "Joined {date}": "Alijiunga {date}",
   "Active": "Hai",
   "Deactivated": "Amesimamishwa",

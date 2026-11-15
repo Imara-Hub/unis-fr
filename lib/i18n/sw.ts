@@ -119,7 +119,7 @@ export const sw: Messages = {
     subtitle: "Ingia ili kutoa alama, kufuatilia washiriki na kupata matokeo.",
     footer: "Majaji na wafanyakazi hujiunga kwa kiungo cha mwaliko anachotuma msimamizi.",
     forgot: "Umesahau nenosiri?",
-    forgotHelp: "Muombe msimamizi akusaidie. Baada ya majaribio mengi yasiyo sahihi, kuingia kunazuiwa kwa dakika 15.",
+    forgotHelp: "Muombe msimamizi: kutoka ukurasa wa Timu anaweza kukupa nenosiri la muda. Baada ya majaribio mengi yasiyo sahihi, kuingia kunazuiwa kwa dakika 15.",
     submit: "Ingia",
   },
 

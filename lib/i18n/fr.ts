@@ -118,7 +118,7 @@ export const fr: Messages = {
     subtitle: "Connectez-vous pour noter, suivre les participants et obtenir les résultats.",
     footer: "Les membres du jury et du personnel rejoignent avec le lien d’invitation envoyé par l’administrateur.",
     forgot: "Mot de passe oublié ?",
-    forgotHelp: "Demandez de l’aide à l’administrateur. Après trop d’essais incorrects, la connexion est bloquée 15 minutes.",
+    forgotHelp: "Demandez à l’administrateur : depuis la page Équipe, il peut vous donner un mot de passe temporaire. Après trop d’essais incorrects, la connexion est bloquée 15 minutes.",
     submit: "Se connecter",
   },
 
