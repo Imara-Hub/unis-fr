@@ -119,7 +119,7 @@ export const rn: Messages = {
     subtitle: "Injira kugira utange amanota, ukurikirane abitabira kandi uronke ivyavuyemwo.",
     footer: "Abacamanza n’abakozi binjira biciye ku murongo w’ubutumire umuyobozi abarungikira.",
     forgot: "Wibagiye ijambo ry’ibanga?",
-    forgotHelp: "Saba umuyobozi agufashe. Iyo ugerageje kenshi ukibesha, kwinjira bihagarikwa iminota 15.",
+    forgotHelp: "Saba umuyobozi: ku rupapuro Umurwi arashobora kuguha ijambo ry’ibanga ry’igihe gito. Iyo ugerageje kenshi ukibesha, kwinjira bihagarikwa iminota 15.",
     submit: "Injira",
   },
 

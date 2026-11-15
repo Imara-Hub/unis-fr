@@ -582,6 +582,22 @@ export const appRn: Record<AppKey, string> = {
   "Deactivate": "Hagarika",
   "Reactivate": "Subizaho",
   "Remove from the team": "Kura mu murwi",
+  // Forgotten password (Team page)
+  "Forgotten password": "Ijambo ry’ibanga ryibagiwe",
+  "{name} forgot their password?": "{name} yibagiye ijambo ry’ibanga?",
+  "Temporary password for {name}": "Ijambo ry’ibanga ry’igihe gito rya {name}",
+  "A temporary password is created for {name}. The old one stops working and they are logged out on every device.":
+    "Ijambo ry’ibanga ry’igihe gito rirakorwa kuri {name}. Irya kera rica rihagarara, kandi arasohoka ku bikoresho vyose.",
+  "You then give it to them yourself (WhatsApp, or in person). Any login lock from their wrong tries is lifted.":
+    "Uca umuha wewe nyene (WhatsApp, canke imbonankubone). Uguhagarikwa kwose kwavuye ku kugerageza nabi kurakurwaho.",
+  "Create a temporary password": "Kora ijambo ry’ibanga ry’igihe gito",
+  "Copy password": "Kopiya ijambo ry’ibanga",
+  "Send on WhatsApp": "Rungika kuri WhatsApp",
+  "Shown only once: copy it or send it now. {name} logs in with it, then chooses their own password in Settings, Password.":
+    "Ryerekanwa rimwe gusa: rikopiye canke urirungike ubu. {name} yinjira aryifashishije, hanyuma agahitamo ijambo ry’ibanga ryiwe muri Ivyo gutunganya, Ijambo ry’ibanga.",
+  "Your new temporary password for Musabaqa:": "Ijambo ry’ibanga ryawe rishasha ry’igihe gito rya Musabaqa:",
+  "Log in with it, then choose your own password in Settings, Password.":
+    "Injira uryifashishije, hanyuma uhitemo ijambo ry’ibanga ryawe muri Ivyo gutunganya, Ijambo ry’ibanga.",
   "Joined {date}": "Yinjiye ku wa {date}",
   "Active": "Arakora",
   "Deactivated": "Yahagaritswe",

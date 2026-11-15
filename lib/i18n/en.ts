@@ -120,7 +120,7 @@ export const en = {
     subtitle: "Log in to judge, follow the participants and get the results.",
     footer: "Judges and staff join with the invite link the administrator sends them.",
     forgot: "Forgot password?",
-    forgotHelp: "Ask the administrator to help you. After too many wrong tries, logging in is blocked for 15 minutes.",
+    forgotHelp: "Ask the administrator: from the Team page they can give you a temporary password. After too many wrong tries, logging in is blocked for 15 minutes.",
     submit: "Log in",
   },
 

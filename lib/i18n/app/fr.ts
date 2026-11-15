@@ -581,6 +581,22 @@ export const appFr = {
   "Deactivate": "Désactiver",
   "Reactivate": "Réactiver",
   "Remove from the team": "Retirer de l’équipe",
+  // Forgotten password (Team page)
+  "Forgotten password": "Mot de passe oublié",
+  "{name} forgot their password?": "{name} a oublié son mot de passe ?",
+  "Temporary password for {name}": "Mot de passe temporaire pour {name}",
+  "A temporary password is created for {name}. The old one stops working and they are logged out on every device.":
+    "Un mot de passe temporaire est créé pour {name}. L’ancien cesse de fonctionner et la personne est déconnectée de tous ses appareils.",
+  "You then give it to them yourself (WhatsApp, or in person). Any login lock from their wrong tries is lifted.":
+    "Vous le lui transmettez ensuite vous-même (WhatsApp, ou de vive voix). Un éventuel blocage dû à ses essais incorrects est levé.",
+  "Create a temporary password": "Créer un mot de passe temporaire",
+  "Copy password": "Copier le mot de passe",
+  "Send on WhatsApp": "Envoyer sur WhatsApp",
+  "Shown only once: copy it or send it now. {name} logs in with it, then chooses their own password in Settings, Password.":
+    "Affiché une seule fois : copiez-le ou envoyez-le maintenant. {name} se connecte avec, puis choisit son propre mot de passe dans Paramètres, Mot de passe.",
+  "Your new temporary password for Musabaqa:": "Votre nouveau mot de passe temporaire pour Musabaqa :",
+  "Log in with it, then choose your own password in Settings, Password.":
+    "Connectez-vous avec, puis choisissez votre propre mot de passe dans Paramètres, Mot de passe.",
   "Joined {date}": "Arrivé le {date}",
   "Active": "Actif",
   "Deactivated": "Désactivé",
