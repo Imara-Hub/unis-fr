@@ -260,6 +260,8 @@ function inviteTimeText(inv: StaffInvitation, tx: ReturnType<typeof useI18n>["tx
   const date = (iso: string) => new Date(iso).toLocaleDateString(dateLocale(), { day: "numeric", month: "short" });
   if (inv.status === "PENDING") {
     const ms = new Date(inv.expiresAt).getTime() - Date.now();
+    // Past its date but the server has not marked it yet (it does so on the next check).
+    if (ms <= 0) return tx("Expired on {date}", { date: date(inv.expiresAt) });
     const hours = Math.ceil(ms / 3_600_000);
     if (hours <= 1) return tx("Expires within the hour");
     if (hours < 24) return tx("Expires in {n} hours", { n: hours });

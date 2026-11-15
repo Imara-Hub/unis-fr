@@ -4,6 +4,7 @@ import { ApolloProvider } from "@apollo/client/react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { useState, type ReactNode } from "react";
 import { ConfirmDialogHost } from "@/components/ConfirmDialog";
+import { ServiceWorker } from "@/components/ServiceWorker";
 import { Toaster } from "@/components/Toaster";
 import { createApolloClient } from "@/lib/apollo";
 import { LanguageProvider } from "@/lib/i18n";
@@ -25,6 +26,7 @@ export function Providers({ children }: { children: ReactNode }) {
         </ApolloProvider>
         <Toaster />
       </ChakraProvider>
+      <ServiceWorker />
     </EmotionRegistry>
   );
 }

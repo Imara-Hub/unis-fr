@@ -549,7 +549,15 @@ function useFocusScreen(on: boolean) {
     window.scrollTo({ top: 0 });
     measure();
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    // A notice appearing or leaving above the sheet moves it: measure again when anything
+    // in the page's main area changes size.
+    const main = ref.current?.closest("main") ?? null;
+    const observer = main && typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (main && observer) observer.observe(main);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
   }, [focus]);
   return { focus, ref, height, pull };
 }

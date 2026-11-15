@@ -55,7 +55,8 @@ export class PhotoTooSmallError extends Error {}
 // JPEG: ~150 KB, always under the server's 2 MB limit. ID documents pass a larger maxSide so
 // the text stays readable.
 export async function preparePhoto(file: File, { passport = false, maxSide = MAX_SIDE } = {}): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
+  // Phone photos carry their rotation in EXIF: apply it, or portraits come out sideways.
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => createImageBitmap(file));
   const { width, height } = bitmap;
 
   if (!passport) {

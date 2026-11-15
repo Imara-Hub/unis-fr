@@ -45,7 +45,9 @@ export const NETWORK_ERROR: ApiError = { message: "Cannot reach the server. Is t
 
 // Turns the first GraphQL error into { code, message, fields } for the UI.
 export function apiErrorFrom(first: GraphQLErrorLike | undefined, overrides: Record<string, string> = {}): ApiError {
-  const code = first?.extensions?.code as string | undefined;
+  // The server answered with an error but no code: still a refusal, not a lost connection
+  // (callers treat "no code" as offline and retry), so it gets a code of its own.
+  const code = (first?.extensions?.code as string | undefined) ?? (first ? "UNKNOWN_ERROR" : undefined);
   const fields: Record<string, string> = {};
   const list = first?.extensions?.fields as { field: string; message: string }[] | undefined;
   for (const f of list ?? []) fields[f.field] = f.message;

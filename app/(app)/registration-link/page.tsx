@@ -269,7 +269,8 @@ function TermsCard() {
   const { tx } = useI18n();
 
   const text = draft ?? saved?.text ?? "";
-  const changed = text.trim() !== (saved?.text ?? "");
+  // What would be saved (trimmed) against what is saved: whitespace alone is not a new version.
+  const changed = text.trim() !== (saved?.text ?? "").trim();
 
   async function onSave() {
     setError(null);
@@ -280,7 +281,7 @@ function TermsCard() {
       return;
     }
     try {
-      await save({ variables: { text } });
+      await save({ variables: { text: text.trim() } });
       setDraft(null);
       setJustSaved(true);
     } catch (err) {
