@@ -8,11 +8,12 @@ import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { AuthCard, FullPageSpinner } from "@/components/AuthCard";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
+import { GoogleSignIn } from "@/components/GoogleSignIn";
 import { MailIcon, PasswordInput } from "@/components/PasswordInput";
 import { readApiError } from "@/lib/errors";
 import { GREETING } from "@/lib/greeting";
 import { useI18n } from "@/lib/i18n";
-import { LOGIN, ME, SIGNUP_OPEN } from "@/lib/graphql/auth";
+import { LOGIN, LOGIN_WITH_GOOGLE, ME, SIGNUP_OPEN } from "@/lib/graphql/auth";
 
 export default function LoginPage() {
   return (
@@ -37,6 +38,12 @@ function Login() {
     refetchQueries: [{ query: ME }],
     awaitRefetchQueries: true,
   });
+  const [loginWithGoogle, { loading: googleLoading }] = useMutation(LOGIN_WITH_GOOGLE, {
+    refetchQueries: [{ query: ME }],
+    awaitRefetchQueries: true,
+  });
+  // The account was just created with Google: say to log in the same way.
+  const viaGoogle = params.get("google") === "1";
 
   const [email, setEmail] = useState(() => params.get("email") ?? "");
   const [password, setPassword] = useState("");
@@ -54,17 +61,31 @@ function Login() {
     else if (!someoneHere && firstRun) router.replace("/signup");
   }, [someoneHere, justCreated, firstRun, router]);
 
+  async function finishLogin() {
+    // Nothing loaded for whoever used this browser before is kept for the new login.
+    await client.clearStore();
+    router.replace("/dashboard");
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
       await login({ variables: { email, password } });
-      // Nothing loaded for whoever used this browser before is kept for the new login.
-      await client.clearStore();
-      router.replace("/dashboard");
+      await finishLogin();
     } catch (err) {
       setError(apiError(readApiError(err)).message);
       setPassword("");
+    }
+  }
+
+  async function onGoogle(idToken: string) {
+    setError(null);
+    try {
+      await loginWithGoogle({ variables: { idToken } });
+      await finishLogin();
+    } catch (err) {
+      setError(apiError(readApiError(err)).message);
     }
   }
 
@@ -88,7 +109,7 @@ function Login() {
               <Alert.Content>
                 <Alert.Title>{t.login.accountCreated}</Alert.Title>
                 <Alert.Description>
-                  {t.login.accountCreatedHelp}
+                  {viaGoogle ? t.google.accountCreatedHelp : t.login.accountCreatedHelp}
                   {someoneHere && ` ${t.login.stillLoggedIn(someoneHere.name)}`}
                 </Alert.Description>
               </Alert.Content>
@@ -140,9 +161,11 @@ function Login() {
             </Text>
           )}
 
-          <Button type="submit" colorPalette="brand" size="lg" loading={loading} disabled={!email || !password}>
+          <Button type="submit" colorPalette="brand" size="lg" loading={loading || googleLoading} disabled={!email || !password}>
             {t.login.submit}
           </Button>
+
+          <GoogleSignIn onCredential={onGoogle} disabled={loading || googleLoading} />
         </Stack>
       </form>
     </AuthCard>

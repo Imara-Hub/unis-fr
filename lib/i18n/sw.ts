@@ -67,6 +67,9 @@ export const sw: Messages = {
     SHEET_LOCKED: "Karatasi hii imeshatumwa na haiwezi kubadilishwa tena.",
     ALREADY_RECITED: "Mshiriki huyu ameshasoma.",
     PANEL_COMPLETE: "Majaji wote wameshatuma karatasi zao kwa mshiriki huyu: alama ni ya mwisho.",
+    GOOGLE_DISABLED: "Kuingia kwa Google hakujawekwa kwenye seva hii. Tumia barua pepe na nenosiri lako.",
+    GOOGLE_INVALID: "Kuingia kwa Google hakukufanikiwa. Jaribu tena.",
+    GOOGLE_NO_ACCOUNT: "Hakuna akaunti ya timu inayotumia barua pepe hii ya Google. Muombe msimamizi kiungo cha mwaliko, au ingia kwa barua pepe na nenosiri lako.",
   },
 
   server: {
@@ -109,6 +112,11 @@ export const sw: Messages = {
     "User not found": "Mtumiaji hakupatikana",
     "Envelope not found": "Bahasha haikupatikana",
     "Invitation not found, or already used": "Mwaliko haukupatikana, au tayari umetumika",
+  },
+
+  google: {
+    or: "au",
+    accountCreatedHelp: "Ingia kwa akaunti ya Google uliyotumia sasa hivi.",
   },
 
   login: {

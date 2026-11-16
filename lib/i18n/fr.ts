@@ -66,6 +66,9 @@ export const fr: Messages = {
     SHEET_LOCKED: "Cette fiche a été envoyée et ne peut plus être modifiée.",
     ALREADY_RECITED: "Ce participant a déjà récité.",
     PANEL_COMPLETE: "Tous les juges ont déjà envoyé leur fiche pour ce participant : la note est définitive.",
+    GOOGLE_DISABLED: "La connexion avec Google n’est pas configurée sur ce serveur. Utilisez votre e-mail et votre mot de passe.",
+    GOOGLE_INVALID: "La connexion avec Google n’a pas abouti. Réessayez.",
+    GOOGLE_NO_ACCOUNT: "Aucun compte de l’équipe n’utilise cet e-mail Google. Demandez un lien d’invitation à l’administrateur, ou connectez-vous avec votre e-mail et votre mot de passe.",
   },
 
   server: {
@@ -108,6 +111,11 @@ export const fr: Messages = {
     "User not found": "Utilisateur introuvable",
     "Envelope not found": "Enveloppe introuvable",
     "Invitation not found, or already used": "Invitation introuvable, ou déjà utilisée",
+  },
+
+  google: {
+    or: "ou",
+    accountCreatedHelp: "Connectez-vous avec le compte Google que vous venez d’utiliser.",
   },
 
   login: {
