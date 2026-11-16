@@ -7,12 +7,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AuthCard, FullPageSpinner } from "@/components/AuthCard";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
+import { GoogleSignIn } from "@/components/GoogleSignIn";
 import { MailIcon, MIN_PASSWORD_LENGTH, PasswordInput, PasswordStrength, UserIcon } from "@/components/PasswordInput";
 import { ServerUnreachable } from "@/components/ServerUnreachable";
 import { readApiError } from "@/lib/errors";
 import { GREETING } from "@/lib/greeting";
 import { useI18n } from "@/lib/i18n";
-import { ME, SIGNUP, SIGNUP_OPEN } from "@/lib/graphql/auth";
+import { ME, SIGNUP, SIGNUP_OPEN, SIGNUP_WITH_GOOGLE } from "@/lib/graphql/auth";
 
 type FormState = { name: string; email: string; password: string; confirm: string };
 const EMPTY: FormState = { name: "", email: "", password: "", confirm: "" };
@@ -29,11 +30,16 @@ export default function SignupPage() {
     refetchQueries: [{ query: ME }],
     awaitRefetchQueries: true,
   });
+  const [signupWithGoogle, { loading: googleLoading }] = useMutation(SIGNUP_WITH_GOOGLE, {
+    refetchQueries: [{ query: ME }],
+    awaitRefetchQueries: true,
+  });
+  const busy = loading || googleLoading;
   const closed = signupOpen.data?.signupOpen === false;
 
   useEffect(() => {
-    if (closed && !loading) router.replace("/login");
-  }, [closed, loading, router]);
+    if (closed && !busy) router.replace("/login");
+  }, [closed, busy, router]);
 
   const [form, setForm] = useState<FormState>(EMPTY);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -60,6 +66,17 @@ export default function SignupPage() {
       const failure = apiError(readApiError(err));
       setError(failure.message);
       setFieldErrors(failure.fields);
+    }
+  }
+
+  async function onGoogle(idToken: string) {
+    setError(null);
+    setFieldErrors({});
+    try {
+      await signupWithGoogle({ variables: { idToken } });
+      router.replace("/dashboard");
+    } catch (err) {
+      setError(apiError(readApiError(err)).message);
     }
   }
 
@@ -130,11 +147,13 @@ export default function SignupPage() {
             type="submit"
             colorPalette="brand"
             size="lg"
-            loading={loading}
+            loading={busy}
             disabled={!form.name || !form.email || form.password.length < MIN_PASSWORD_LENGTH || !form.confirm || confirmMismatch}
           >
             {t.signup.submit}
           </Button>
+
+          <GoogleSignIn onCredential={onGoogle} text="signup_with" disabled={busy} />
         </Stack>
       </form>
     </AuthCard>

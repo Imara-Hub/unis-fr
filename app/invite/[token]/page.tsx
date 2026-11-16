@@ -7,11 +7,12 @@ import { Suspense, useState, type FormEvent } from "react";
 import { AuthCard, FullPageSpinner } from "@/components/AuthCard";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
+import { GoogleSignIn } from "@/components/GoogleSignIn";
 import { MailIcon, MIN_PASSWORD_LENGTH, PasswordInput, PasswordStrength, UserIcon } from "@/components/PasswordInput";
 import { readApiError } from "@/lib/errors";
 import { GREETING } from "@/lib/greeting";
 import { useI18n } from "@/lib/i18n";
-import { ACCEPT_STAFF_INVITATION, INVITATION_CHECK } from "@/lib/graphql/staff";
+import { ACCEPT_STAFF_INVITATION, ACCEPT_STAFF_INVITATION_WITH_GOOGLE, INVITATION_CHECK } from "@/lib/graphql/staff";
 
 type FormState = { name: string; email: string; password: string; confirm: string };
 const EMPTY: FormState = { name: "", email: "", password: "", confirm: "" };
@@ -34,6 +35,8 @@ function Invite() {
   const { token } = useParams<{ token: string }>();
   const check = useQuery(INVITATION_CHECK, { variables: { token }, fetchPolicy: "network-only" });
   const [accept, { loading }] = useMutation(ACCEPT_STAFF_INVITATION);
+  const [acceptWithGoogle, { loading: googleLoading }] = useMutation(ACCEPT_STAFF_INVITATION_WITH_GOOGLE);
+  const busy = loading || googleLoading;
   const [leaving, setLeaving] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -60,6 +63,24 @@ function Invite() {
       await accept({ variables: { input: { token, name, email, password } } });
       setLeaving(true);
       const params = new URLSearchParams({ created: "1", email: email.trim() });
+      router.replace(`/login?${params}`);
+    } catch (err) {
+      const failure = apiError(readApiError(err));
+      setError(failure.message);
+      setFieldErrors(failure.fields);
+    }
+  }
+
+  // With Google: the account takes Google's name and email; they log in with Google next.
+  async function onGoogle(idToken: string) {
+    setError(null);
+    setFieldErrors({});
+    try {
+      const res = await acceptWithGoogle({ variables: { input: { token, idToken } } });
+      setLeaving(true);
+      const params = new URLSearchParams({ created: "1", google: "1" });
+      const email = res.data?.acceptStaffInvitationWithGoogle.user.email;
+      if (email) params.set("email", email);
       router.replace(`/login?${params}`);
     } catch (err) {
       const failure = apiError(readApiError(err));
@@ -140,9 +161,11 @@ function Invite() {
             <PasswordInput autoComplete="new-password" size="lg" value={form.confirm} onChange={set("confirm")} />
           </FormField>
 
-          <Button type="submit" colorPalette="brand" size="lg" loading={loading}>
+          <Button type="submit" colorPalette="brand" size="lg" loading={busy}>
             {t.invite.submit}
           </Button>
+
+          <GoogleSignIn onCredential={onGoogle} text="continue_with" disabled={busy} />
         </Stack>
       </form>
     </AuthCard>

@@ -23,6 +23,8 @@ export const metadata: Metadata = {
   // opens it full screen under this name.
   appleWebApp: { capable: true, title: "Musabaqa", statusBarStyle: "default" },
   formatDetection: { telephone: false },
+  // Not for search engines (see app/robots.ts): links are shared by the organisation itself.
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = { themeColor: "#1A234E", width: "device-width", initialScale: 1, viewportFit: "cover" };

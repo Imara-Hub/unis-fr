@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Logo as LogoBadge } from "@/components/brand/Logo";
 import { StarLattice } from "@/components/brand/Octagram";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { UserAvatar } from "@/components/UserAvatar";
 import type { Role, User } from "@/lib/graphql/auth";
@@ -454,6 +455,7 @@ function SidebarShell({
         </Drawer.Root>
 
         <Box as="main" flex="1" minW="0" px={{ base: "4", md: "8" }} py={{ base: "5", md: "7" }} maxW="7xl" w="full">
+          <InstallPrompt />
           {/* Each page fades in when opened (the key restarts the animation on navigation). */}
           <Box key={pathname} animation="fade-in 0.3s ease-out" _motionReduce={{ animation: "none" }}>
             {children}

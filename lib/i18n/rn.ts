@@ -67,6 +67,9 @@ export const rn: Messages = {
     SHEET_LOCKED: "Uru rupapuro rwararungitswe kandi ntirugishobora guhindurwa.",
     ALREADY_RECITED: "Uwo yitabira yarasomye.",
     PANEL_COMPLETE: "Abacamanza bose bamaze kurungika impapuro zabo kuri uwo yitabira: amanota ni ntakuka.",
+    GOOGLE_DISABLED: "Kwinjira ukoresheje Google ntibishizweho kuri iyi seriveri. Koresha imeyili n’ijambo ry’ibanga vyawe.",
+    GOOGLE_INVALID: "Kwinjira ukoresheje Google ntivyakunze. Gerageza kandi.",
+    GOOGLE_NO_ACCOUNT: "Nta konti y’umurwi ikoresha iyi meyili ya Google. Saba umuyobozi umuhora w’ubutumire, canke winjire ukoresheje imeyili n’ijambo ry’ibanga vyawe.",
   },
 
   server: {
@@ -109,6 +112,11 @@ export const rn: Messages = {
     "User not found": "Ukoresha ntabonetse",
     "Envelope not found": "Ibahasha ntibonetse",
     "Invitation not found, or already used": "Ubutumire ntibubonetse, canke bwamaze gukoreshwa",
+  },
+
+  google: {
+    or: "canke",
+    accountCreatedHelp: "Injira ukoresheje konti ya Google uhejeje gukoresha.",
   },
 
   login: {

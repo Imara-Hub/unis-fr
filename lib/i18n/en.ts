@@ -67,7 +67,15 @@ export const en = {
     SHEET_LOCKED: "This sheet was submitted and can no longer be changed.",
     ALREADY_RECITED: "This participant has already recited.",
     PANEL_COMPLETE: "All the judges already submitted for this participant: the score is final.",
+    GOOGLE_DISABLED: "Sign in with Google is not set up on this server. Use your email and password.",
+    GOOGLE_INVALID: "Google sign-in did not go through. Try again.",
+    GOOGLE_NO_ACCOUNT: "No account on the team uses this Google email. Ask the administrator for an invite link, or log in with your email and password.",
   } as Record<string, string>,
+
+  google: {
+    or: "or",
+    accountCreatedHelp: "Log in with the Google account you just used.",
+  },
 
   // The server's English field messages, translated by their exact text.
   server: {

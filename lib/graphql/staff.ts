@@ -153,5 +153,35 @@ export const ACCEPT_STAFF_INVITATION: TypedDocumentNode<
   }
 `;
 
+export const ACCEPT_STAFF_INVITATION_WITH_GOOGLE: TypedDocumentNode<
+  { acceptStaffInvitationWithGoogle: { user: User } },
+  { input: { token: string; idToken: string } }
+> = gql`
+  mutation AcceptStaffInvitationWithGoogle($input: AcceptStaffInvitationWithGoogleInput!) {
+    acceptStaffInvitationWithGoogle(input: $input) {
+      user {
+        id
+        name
+        email
+        role
+      }
+    }
+  }
+`;
+
+// Admin only: the key of the entry link (/enter/<key>), null when there is no gate.
+export const ORG_ACCESS_KEY: TypedDocumentNode<{ orgAccessKey: string | null }> = gql`
+  query OrgAccessKey {
+    orgAccessKey
+  }
+`;
+
+// Admin only: a new key. Every device (this one included) must open a link again.
+export const REGENERATE_ACCESS_KEY: TypedDocumentNode<{ regenerateAccessKey: string }> = gql`
+  mutation RegenerateAccessKey {
+    regenerateAccessKey
+  }
+`;
+
 // English: shown through tx() (lib/i18n), so each language has its own words.
 export const ROLE_LABELS: Record<Role, AppKey> = { ADMIN: "Admin", JUDGE: "Judge", STAFF: "Staff" };

@@ -64,6 +64,29 @@ export const LOGIN: TypedDocumentNode<{ login: { user: User } }, { email: string
   ${USER_FIELDS}
 `;
 
+// Sign in with Google: the ID token Google's button hands us.
+export const LOGIN_WITH_GOOGLE: TypedDocumentNode<{ loginWithGoogle: { user: User } }, { idToken: string }> = gql`
+  mutation LoginWithGoogle($idToken: String!) {
+    loginWithGoogle(idToken: $idToken) {
+      user {
+        ...UserFields
+      }
+    }
+  }
+  ${USER_FIELDS}
+`;
+
+export const SIGNUP_WITH_GOOGLE: TypedDocumentNode<{ signupWithGoogle: { user: User } }, { idToken: string }> = gql`
+  mutation SignupWithGoogle($idToken: String!) {
+    signupWithGoogle(idToken: $idToken) {
+      user {
+        ...UserFields
+      }
+    }
+  }
+  ${USER_FIELDS}
+`;
+
 export const LOGOUT: TypedDocumentNode<{ logout: boolean }> = gql`
   mutation Logout {
     logout

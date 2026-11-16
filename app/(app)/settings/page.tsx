@@ -32,19 +32,20 @@ import { CHANGE_PASSWORD, ME, REMOVE_AVATAR, UPDATE_PROFILE, type User } from "@
 import { SCORING_RULES, type ScoringRules } from "@/lib/graphql/judging";
 import { SET_RESULTS_PUBLISHED, SETTINGS, UPDATE_SETTINGS, type Settings } from "@/lib/graphql/participants";
 import { preparePhoto } from "@/lib/register";
-import { ROLE_LABELS } from "@/lib/graphql/staff";
+import { ORG_ACCESS_KEY, REGENERATE_ACCESS_KEY, ROLE_LABELS } from "@/lib/graphql/staff";
 import type { AppKey } from "@/lib/i18n";
-import { Camera, Check, Lock, Trophy, UserRound, Users } from "lucide-react";
+import { Camera, Check, KeyRound, Lock, Trophy, UserRound, Users } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { MARK_TYPES } from "@/lib/marks";
 
-type Section = "profile" | "password" | "competition" | "team";
+type Section = "profile" | "password" | "competition" | "team" | "access";
 
 const SECTIONS: { key: Section; label: AppKey; hint: AppKey; adminOnly: boolean; icon: ReactNode }[] = [
   { key: "profile", label: "My profile", hint: "Picture and name", adminOnly: false, icon: <UserIcon /> },
   { key: "password", label: "Password", hint: "Change your password", adminOnly: false, icon: <LockIcon /> },
   { key: "competition", label: "Competition", hint: "Judges and pass mark", adminOnly: true, icon: <TrophyIcon /> },
   { key: "team", label: "Team members", hint: "Roles, names, access", adminOnly: true, icon: <TeamIcon /> },
+  { key: "access", label: "Access to the app", hint: "Entry link for owners", adminOnly: true, icon: <KeyIcon /> },
 ];
 
 function subscribeHash(listener: () => void) {
@@ -88,7 +89,7 @@ export default function SettingsPage() {
         {/* Section menu: a column on computers, a row of tabs on phones */}
         <Card.Root position={{ lg: "sticky" }} top={{ lg: "24" }}>
           <Card.Body p="2">
-            <Flex as="nav" aria-label={tx("Settings sections")} direction={{ base: "row", lg: "column" }} gap="1" overflowX="auto">
+            <Flex as="nav" aria-label={tx("Settings sections")} direction={{ base: "row", lg: "column" }} gap="1" wrap={{ base: "wrap", lg: "nowrap" }}>
               {sections.map((s) => {
                 const active = current === s.key;
                 return (
@@ -144,6 +145,7 @@ export default function SettingsPage() {
           {current === "password" && <PasswordSection />}
           {current === "competition" && <CompetitionSection />}
           {current === "team" && <TeamSection />}
+          {current === "access" && <AccessSection />}
         </Box>
       </Grid>
     </>
@@ -724,9 +726,144 @@ function TeamSection() {
   );
 }
 
+// ——— Access to the app (admin) ———
+
+// Who can open the team's pages, and the entry link that unlocks a new device for an owner.
+// The key lives in the API (admin only to read). "New key": the API makes one, every device is
+// locked out, and this browser opens the new link at once (a fetch of /enter/<key>) so the admin
+// is not thrown out of the page they are reading.
+function AccessSection() {
+  const { data, loading, error } = useQuery(ORG_ACCESS_KEY);
+  const [regenerate, { loading: making }] = useMutation(REGENERATE_ACCESS_KEY);
+  const [madeError, setMadeError] = useState<string | null>(null);
+  const key = data?.orgAccessKey ?? null;
+  const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
+  const { tx } = useI18n();
+  const url = key ? `${origin}/enter/${encodeURIComponent(key)}` : "";
+
+  async function makeNewKey() {
+    const ok = await confirmDialog({
+      title: key ? tx("Make a new entry link?") : tx("Close the app to the public?"),
+      message: key
+        ? tx("The current link stops working and every phone and computer, yours included, is locked out. This browser opens the new link by itself; send it to the other owners. Judges and staff need a new invite link, or the new entry link.")
+        : tx("From now on only browsers that opened an invite link or the entry link can reach the app. This browser opens the new link by itself."),
+      confirmLabel: key ? tx("Make a new link") : tx("Close the app to the public"),
+      destructive: Boolean(key),
+    });
+    if (!ok) return;
+    setMadeError(null);
+    try {
+      const res = await regenerate({ refetchQueries: [ORG_ACCESS_KEY] });
+      const fresh = res.data?.regenerateAccessKey;
+      if (!fresh) return;
+      // Unlock this browser with the new key before the next page load.
+      const entered = await fetch(`/enter/${encodeURIComponent(fresh)}`, { headers: { accept: "application/json" }, cache: "no-store" }).catch(() => null);
+      if (!entered?.ok) {
+        setMadeError(tx("The new key is made, but this browser could not open the new link by itself. Open the link below on this device too."));
+        return;
+      }
+      toaster.create({ type: "success", title: tx("New entry link made") });
+    } catch (err) {
+      setMadeError(readApiError(err).message);
+    }
+  }
+
+  return (
+    <SectionCard title={tx("Access to the app")} description={tx("Who can open the app, and how to unlock a new phone or computer.")}>
+      <Stack gap="7">
+        {/* How each group gets in */}
+        <Stack gap="2" fontSize="sm">
+          <AccessRow title={tx("Owners")} text={tx("The entry link below, once per device, then log in.")} />
+          <AccessRow title={tx("Judges and staff")} text={tx("The invite link sent from the Team page unlocks their device by itself.")} />
+          <AccessRow title={tx("Participants and the public")} text={tx("The registration link and the results page are open to everyone. Nothing else is.")} />
+        </Stack>
+
+        <Stack gap="4" borderTopWidth="1px" pt="6">
+          <Box>
+            <Heading size="md" color="brand.900">
+              {tx("Entry link")}
+            </Heading>
+            <Text fontSize="sm" color="fg.muted">
+              {tx("Open it once on a new phone or computer: the app is unlocked there, then log in. Give it only to the owners: anyone who has it reaches the login page.")}
+            </Text>
+          </Box>
+
+          <ErrorAlert message={madeError} />
+          {loading ? (
+            <Text color="fg.muted">{tx("Loading…")}</Text>
+          ) : error ? (
+            <ErrorAlert message={readApiError(error).message} />
+          ) : !key ? (
+            <AccessWarning title={tx("The app is open to everyone")} text={tx("There is no entry key yet: anyone who types the address sees the login page. Make one to keep the app for the organisation.")} />
+          ) : (
+            <ShareLink url={url} message={`${GREETING}! ${tx("Here is the entry link to the Musabaqa app. Open it once on your phone or computer, then log in:")}`} qr />
+          )}
+
+          {key && (
+            <Text fontSize="sm" color="fg.muted">
+              {tx("After opening the link, install the app: on Android, the browser menu then “Install app”; on iPhone, Share then “Add to Home Screen”.")}
+            </Text>
+          )}
+
+          {!loading && !error && (
+            <Flex gap="4" align={{ base: "flex-start", md: "center" }} direction={{ base: "column", md: "row" }} pt="4" borderTopWidth="1px">
+              <Box flex="1">
+                <Text fontWeight="semibold" color="brand.900">
+                  {key ? tx("New entry link") : tx("Entry key")}
+                </Text>
+                <Text fontSize="sm" color="fg.muted">
+                  {key
+                    ? tx("A phone is lost, or someone leaves? Make a new link: every device then needs a link again.")
+                    : tx("Made here, in one tap. You then send the link to the other owners.")}
+                </Text>
+              </Box>
+              <Button colorPalette={key ? "red" : "brand"} variant={key ? "outline" : "solid"} loading={making} onClick={makeNewKey} flexShrink={0}>
+                {key ? tx("Make a new link") : tx("Close the app to the public")}
+              </Button>
+            </Flex>
+          )}
+        </Stack>
+      </Stack>
+    </SectionCard>
+  );
+}
+
+function AccessRow({ title, text }: { title: string; text: string }) {
+  return (
+    <Flex gap="3" align="flex-start">
+      <Box color="gold.600" mt="0.5" flexShrink={0}>
+        <Check size={16} aria-hidden />
+      </Box>
+      <Text>
+        <Text as="span" fontWeight="semibold" color="brand.900">
+          {title}
+        </Text>{" "}
+        <Text as="span" color="fg.muted">
+          {text}
+        </Text>
+      </Text>
+    </Flex>
+  );
+}
+
+function AccessWarning({ title, text }: { title: string; text: string }) {
+  return (
+    <Alert.Root status="warning">
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Title>{title}</Alert.Title>
+        <Alert.Description>{text}</Alert.Description>
+      </Alert.Content>
+    </Alert.Root>
+  );
+}
+
 // Icons (lucide)
 function UserIcon() {
   return <UserRound size={18} aria-hidden />;
+}
+function KeyIcon() {
+  return <KeyRound size={18} aria-hidden />;
 }
 function LockIcon() {
   return <Lock size={18} aria-hidden />;

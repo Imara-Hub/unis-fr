@@ -18,11 +18,8 @@ const nextConfig = {
   // No cacheComponents / partialPrefetching: every page checks the login in the browser, so they
   // gave nothing here, and the <Activity> wrapper they add froze the tab on reload ("Page
   // Unresponsive") whenever React found a hydration mismatch inside it.
-  // The bare address opens the login page, answered by the server before any page loads. The login
-  // page sends someone already logged in on to /dashboard, and opens /signup on a new install.
-  async redirects() {
-    return [{ source: "/", destination: "/login", permanent: false }];
-  },
+  // The bare address is answered in proxy.ts: /login for the organization, /results for everyone
+  // else (a redirect here would run before the proxy and cost strangers a second hop).
   // Basic hardening on every page: no framing by other sites (clickjacking on the judging desk),
   // no MIME sniffing, no full URLs (registration and stage-screen tokens) leaked to other sites,
   // and no camera/mic/location. Screen wake lock stays allowed for the stage screen.
