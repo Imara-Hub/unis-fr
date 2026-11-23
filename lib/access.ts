@@ -81,6 +81,15 @@ export async function enterWithInvitation(inviteToken: string): Promise<string |
   return data?.enterWithInvitation ?? null;
 }
 
+// The cookie's value for a working personal login link (/go/<code>), or null.
+export async function enterWithLoginLink(code: string): Promise<string | null> {
+  const data = await gql<{ enterWithLoginLink: string | null }>(
+    `mutation EnterLoginLink($code: String!) { enterWithLoginLink(code: $code) }`,
+    { code },
+  );
+  return data?.enterWithLoginLink ?? null;
+}
+
 export function grantAccess(request: NextRequest, response: NextResponse, token: string) {
   knownGood.add(token);
   response.cookies.set({

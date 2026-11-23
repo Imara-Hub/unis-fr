@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
 import { Button, Input, InputGroup, Stack } from "@chakra-ui/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
@@ -14,6 +14,8 @@ import { readApiError } from "@/lib/errors";
 import { GREETING } from "@/lib/greeting";
 import { useI18n } from "@/lib/i18n";
 import { ME, SIGNUP, SIGNUP_OPEN, SIGNUP_WITH_GOOGLE } from "@/lib/graphql/auth";
+import { setSessionToken } from "@/lib/sessionToken";
+import { setViewedSeason } from "@/lib/season";
 
 type FormState = { name: string; email: string; password: string; confirm: string };
 const EMPTY: FormState = { name: "", email: "", password: "", confirm: "" };
@@ -22,6 +24,7 @@ const EMPTY: FormState = { name: "", email: "", password: "", confirm: "" };
 // every page leads here (see the login page); once the admin exists, this page only redirects to login.
 export default function SignupPage() {
   const router = useRouter();
+  const client = useApolloClient();
   const { t, apiError } = useI18n();
   const signupOpen = useQuery(SIGNUP_OPEN, { fetchPolicy: "network-only" });
   const [signup, { loading }] = useMutation(SIGNUP, {
@@ -60,7 +63,10 @@ export default function SignupPage() {
     }
     try {
       const { name, email, password } = form;
-      await signup({ variables: { input: { name, email, password } } });
+      const res = await signup({ variables: { input: { name, email, password } } });
+      setSessionToken(res.data?.signup.token);
+      setViewedSeason(null);
+      await client.clearStore();
       router.replace("/dashboard");
     } catch (err) {
       const failure = apiError(readApiError(err));
@@ -73,7 +79,10 @@ export default function SignupPage() {
     setError(null);
     setFieldErrors({});
     try {
-      await signupWithGoogle({ variables: { idToken } });
+      const res = await signupWithGoogle({ variables: { idToken } });
+      setSessionToken(res.data?.signupWithGoogle.token);
+      setViewedSeason(null);
+      await client.clearStore();
       router.replace("/dashboard");
     } catch (err) {
       setError(apiError(readApiError(err)).message);

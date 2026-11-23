@@ -25,10 +25,7 @@ export default function InvitePage() {
   );
 }
 
-// A judge or staff member opens the link the admin sent them: 1. they create their account,
-// 2. the login page opens, where they log in with it. Nobody is logged out: whoever is logged in on
-// this browser (often the admin testing the link) stays so until the new person actually logs in
-// here, and their sessions on other devices are never touched.
+
 function Invite() {
   const router = useRouter();
   const { t, apiError } = useI18n();

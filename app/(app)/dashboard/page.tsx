@@ -176,7 +176,7 @@ function Welcome({ user }: { user: User }) {
     >
       {/* Lattice across the band, fading behind the text */}
       <Box position="absolute" inset="0" aria-hidden>
-        <StarLattice color="#C99A35" opacity={0.3} />
+        <StarLattice color="#F9971D" opacity={0.3} />
         <Box
           position="absolute"
           inset="0"

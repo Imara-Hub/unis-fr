@@ -49,11 +49,11 @@ export function ParticipantInfo({
     return (
       <Box position="relative" overflow="hidden" bg={NAVY_GRADIENT} color="white">
         <Box position="absolute" insetY="0" right="0" w={{ base: "full", md: "50%" }} aria-hidden>
-          <StarLattice color="#C99A35" opacity={0.2} />
+          <StarLattice color="#F9971D" opacity={0.2} />
           <Box position="absolute" inset="0" bg="linear-gradient(to right, #1A234E 0%, rgba(26,35,78,0.6) 50%, rgba(26,35,78,0.15) 100%)" />
         </Box>
         <Flex position="relative" gap={{ base: "4", md: "5" }} align="center" wrap="wrap" px={{ base: "4", md: "7" }} py={{ base: "4", md: "5" }}>
-          <Box p="1" rounded="lg" bg="linear-gradient(160deg, #F3DB98, #C99A35)" boxShadow="0 6px 16px rgba(0,0,0,0.35)" flexShrink={0}>
+          <Box p="1" rounded="lg" bg="linear-gradient(160deg, #FDD199, #F9971D)" boxShadow="0 6px 16px rgba(0,0,0,0.35)" flexShrink={0}>
             <ParticipantPhoto path={p.photoUrl} size="medium" />
           </Box>
           <Stack gap="2" flex="1" minW="56">
@@ -69,7 +69,7 @@ export function ParticipantInfo({
             <Flex gap="1.5" wrap="wrap">
               {facts.map(({ icon: Icon, text }) => (
                 <Flex key={text} align="center" gap="1.5" px="2.5" py="1" rounded="full" bg="whiteAlpha.100" borderWidth="1px" borderColor="whiteAlpha.200" fontSize="xs">
-                  <Icon size={13} color="#E2C06A" aria-hidden />
+                  <Icon size={13} color="#FBB75E" aria-hidden />
                   <Text>{text}</Text>
                 </Flex>
               ))}

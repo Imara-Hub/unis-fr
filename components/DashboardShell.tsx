@@ -1,19 +1,24 @@
 "use client";
 
 import { Badge, Box, CloseButton, Drawer, Flex, Heading, IconButton, Menu, Portal, Spacer, Stack, Status, Text } from "@chakra-ui/react";
-import { ChevronDown, ClipboardCheck, House, Link2, LogOut, Mail, Menu as MenuIcon, Mic, Scale, Settings, UserCog, Users, type LucideIcon } from "lucide-react";
+import { ChevronDown, ClipboardCheck, House, Link2, ListOrdered, LogOut, Mail, Menu as MenuIcon, Mic, Scale, Settings, Trophy, UserCog, Users, type LucideIcon } from "lucide-react";
 import NextLink from "next/link";
+import { useQuery } from "@apollo/client/react";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Logo as LogoBadge } from "@/components/brand/Logo";
 import { StarLattice } from "@/components/brand/Octagram";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { SeasonBanner, SeasonSwitcher } from "@/components/Seasons";
+import { SEASONS } from "@/lib/graphql/seasons";
+import { getViewedSeason, setViewedSeason } from "@/lib/season";
 import { UserAvatar } from "@/components/UserAvatar";
 import type { Role, User } from "@/lib/graphql/auth";
 import type { AppKey } from "@/lib/i18n";
 import { ROLE_LABELS } from "@/lib/graphql/staff";
 import { useI18n } from "@/lib/i18n";
+import { DropdownCard, dropdownItemStyle, ItemBadge } from "@/components/Dropdown";
 
 // Pages in the sidebar, and which roles see them. New features add a line here.
 const NAV: { href: string; label: AppKey; icon: LucideIcon; roles: Role[] }[] = [
@@ -21,7 +26,9 @@ const NAV: { href: string; label: AppKey; icon: LucideIcon; roles: Role[] }[] = 
   { href: "/dashboard", label: "Judging", icon: Scale, roles: ["JUDGE"] }, // the judging desk
   { href: "/stage", label: "Live stage", icon: Mic, roles: ["ADMIN", "STAFF"] }, // watch the judging (read only)
   { href: "/registrations", label: "Registrations", icon: ClipboardCheck, roles: ["ADMIN"] }, // review queue
+  { href: "/order", label: "Order of passage", icon: ListOrdered, roles: ["ADMIN"] }, // the numbers
   { href: "/participants", label: "Participants", icon: Users, roles: ["ADMIN", "JUDGE", "STAFF"] },
+  { href: "/ranking", label: "Ranking", icon: Trophy, roles: ["ADMIN", "JUDGE", "STAFF"] }, // best first, with the PDF
   { href: "/envelopes", label: "Questions", icon: Mail, roles: ["ADMIN", "JUDGE", "STAFF"] }, // judges prepare them
   { href: "/registration-link", label: "Registration link", icon: Link2, roles: ["ADMIN"] },
   { href: "/team", label: "Team", icon: UserCog, roles: ["ADMIN"] },
@@ -98,7 +105,7 @@ function NavLinks({ role, onNavigate }: { role: Role; onNavigate?: () => void })
             color={active ? "white" : "whiteAlpha.800"}
             // Active item: a lighter pane of navy glass with the gold bar on its left edge.
             bg={active ? "rgba(58,76,140,0.45)" : "transparent"}
-            boxShadow={active ? "inset 3px 0 0 #DDB65A, inset 0 0 0 1px rgba(255,255,255,0.08)" : "none"}
+            boxShadow={active ? "inset 3px 0 0 #FBB75E, inset 0 0 0 1px rgba(255,255,255,0.08)" : "none"}
             backdropFilter={active ? "blur(8px)" : undefined}
             transition="background 0.15s, color 0.15s"
             _hover={{ bg: active ? undefined : "whiteAlpha.100", color: "white" }}
@@ -129,7 +136,7 @@ function Sidebar({ role, onNavigate }: { role: Role; onNavigate?: () => void }) 
       overflow="hidden"
     >
       <Box position="absolute" inset="0" aria-hidden pointerEvents="none">
-        <StarLattice color="#C99A35" opacity={0.22} />
+        <StarLattice color="#F9971D" opacity={0.22} />
         {/* Strongest at the bottom, faded behind the menu. */}
         <Box
           position="absolute"
@@ -187,14 +194,17 @@ function UserMenu({ user, onLogout, loggingOut }: { user: User; onLogout: () => 
           align="center"
           gap="2.5"
           ps="1"
-          pe={{ base: "1", sm: "2" }}
+          pe={{ base: "1", sm: "2.5" }}
           py="1"
           rounded="full"
+          borderWidth="1px"
+          borderColor="blackAlpha.200"
+          bg="white"
           color="brand.900"
           cursor="pointer"
-          transition="background 0.15s"
-          _hover={{ bg: "brand.50" }}
-          _expanded={{ bg: "brand.50" }}
+          transition="background 0.15s, border-color 0.15s, box-shadow 0.15s"
+          _hover={{ bg: "brand.50", borderColor: "brand.200" }}
+          _expanded={{ bg: "brand.50", borderColor: "brand.300", boxShadow: "0 0 0 3px rgba(52,67,127,0.12)" }}
           _focusVisible={{ outline: "2px solid", outlineColor: "brand.400", outlineOffset: "2px" }}
           aria-label={tx("Account menu")}
         >
@@ -214,8 +224,10 @@ function UserMenu({ user, onLogout, loggingOut }: { user: User; onLogout: () => 
       </Menu.Trigger>
       <Portal>
         <Menu.Positioner>
-          <Menu.Content minW="64" p="0" overflow="hidden" rounded="xl">
-            <Box px="4" py="3" bg="bg.subtle" borderBottomWidth="1px" borderTopWidth="2px" borderTopColor="gold.400">
+          <DropdownCard
+            minW="64"
+            header={
+            <Box px="4" py="3" bg="bg.subtle" borderBottomWidth="1px">
               <Text fontWeight="semibold" truncate>
                 {user.name}
               </Text>
@@ -226,25 +238,23 @@ function UserMenu({ user, onLogout, loggingOut }: { user: User; onLogout: () => 
                 {tx(ROLE_LABELS[user.role])}
               </Badge>
             </Box>
-            <Box p="1.5">
-              <Menu.Item value="profile" asChild cursor="pointer">
+            }
+          >
+              <Menu.Item value="profile" asChild {...dropdownItemStyle()}>
                 <NextLink href="/settings">
-                  <Settings size={16} aria-hidden />
+                  <ItemBadge>
+                    <Settings size={16} aria-hidden />
+                  </ItemBadge>
                   {tx("My profile and settings")}
                 </NextLink>
               </Menu.Item>
-              <Menu.Item
-                value="logout"
-                disabled={loggingOut}
-                color="fg.error"
-                cursor="pointer"
-                _highlighted={{ bg: "bg.error", color: "fg.error" }}
-              >
-                <LogOut size={16} aria-hidden />
+              <Menu.Item value="logout" disabled={loggingOut} {...dropdownItemStyle(false, "danger")}>
+                <ItemBadge tone="danger">
+                  <LogOut size={16} aria-hidden />
+                </ItemBadge>
                 {loggingOut ? tx("Logging out…") : tx("Log out")}
               </Menu.Item>
-            </Box>
-          </Menu.Content>
+          </DropdownCard>
         </Menu.Positioner>
       </Portal>
     </Menu.Root>
@@ -350,7 +360,7 @@ function JudgeShell({
         </Box>
       </Box>
 
-      <Box as="main" flex="1" minW="0" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }} w="full">
+      <Box as="main" flex="1" minW="0" px={{ base: "3", md: "5" }} py={{ base: "3", md: "4" }} w="full">
         <Box key={pathname} animation="fade-in 0.3s ease-out" _motionReduce={{ animation: "none" }}>
           {children}
         </Box>
@@ -366,7 +376,12 @@ export function DashboardShell(props: {
   loggingOut: boolean;
   children: ReactNode;
 }) {
-  if (props.user.role === "JUDGE") return <JudgeShell {...props} />;
+  const judge = props.user.role === "JUDGE";
+  // Judges always work in the current year (only admin and staff look back at past years).
+  useEffect(() => {
+    if (judge && getViewedSeason() !== null) setViewedSeason(null);
+  }, [judge]);
+  if (judge) return <JudgeShell {...props} />;
   return <SidebarShell {...props} />;
 }
 
@@ -383,6 +398,7 @@ function SidebarShell({
   loggingOut: boolean;
   children: ReactNode;
 }) {
+  const manyYears = (useQuery(SEASONS).data?.seasons.length ?? 0) >= 2; // the year picker shows
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
   const { tx } = useI18n();
@@ -424,7 +440,8 @@ function SidebarShell({
           >
             <MenuIcon size={20} aria-hidden />
           </IconButton>
-          <Box display={{ xl: "none" }}>
+          {/* On a phone the logo gives way to the year picker (2+ years), so the bar never overflows. */}
+          <Box display={{ base: manyYears ? "none" : "block", sm: "block", xl: "none" }}>
             <Logo compact dark />
           </Box>
           <Heading as="p" display={{ base: "none", xl: "block" }} fontFamily="display" fontSize="xl" color="brand.900">
@@ -432,6 +449,7 @@ function SidebarShell({
           </Heading>
           <Spacer />
           <LivePill live={live} />
+          <SeasonSwitcher />
           <LanguageSwitcher />
           <Box h="7" w="1px" bg="blackAlpha.100" display={{ base: "none", sm: "block" }} />
           <UserMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
@@ -456,6 +474,8 @@ function SidebarShell({
 
         <Box as="main" flex="1" minW="0" px={{ base: "4", md: "8" }} py={{ base: "5", md: "7" }} maxW="7xl" w="full">
           <InstallPrompt />
+          {/* A past year open: said above every page, with the way back. */}
+          <SeasonBanner />
           {/* Each page fades in when opened (the key restarts the animation on navigation). */}
           <Box key={pathname} animation="fade-in 0.3s ease-out" _motionReduce={{ animation: "none" }}>
             {children}

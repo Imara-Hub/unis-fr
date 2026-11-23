@@ -8,6 +8,10 @@ export type InvitationStatus = "PENDING" | "USED" | "EXPIRED" | "REVOKED";
 export interface TeamMember extends User {
   isActive: boolean;
   createdAt: string;
+  // Personal login link, as a path (/go/<code>): null for the admin and while deactivated.
+  loginLink: string | null;
+  // The password the admin created for them, readable by the admin until they choose their own.
+  password: string | null;
 }
 
 export interface StaffInvitation {
@@ -45,6 +49,8 @@ export const TEAM: TypedDocumentNode<{ users: TeamMember[]; staffInvitations: St
       isActive
       avatarUrl
       createdAt
+      loginLink
+      password
     }
     staffInvitations {
       ...StaffInvitationFields
@@ -79,13 +85,16 @@ export const REVOKE_STAFF_INVITATION: TypedDocumentNode<{ revokeStaffInvitation:
   `;
 
 export const SET_USER_ACTIVE: TypedDocumentNode<
-  { setUserActive: { id: string; isActive: boolean } },
+  { setUserActive: { id: string; isActive: boolean; loginLink: string | null; password: string | null } },
   { input: { userId: string; active: boolean } }
 > = gql`
   mutation SetUserActive($input: SetUserActiveInput!) {
     setUserActive(input: $input) {
       id
       isActive
+      # Deactivated: no working login link; reactivated: it is back.
+      loginLink
+      password
     }
   }
 `;
@@ -106,6 +115,25 @@ export const UPDATE_USER: TypedDocumentNode<
 export const REMOVE_USER: TypedDocumentNode<{ removeUser: boolean }, { userId: string }> = gql`
   mutation RemoveUser($userId: ID!) {
     removeUser(userId: $userId)
+  }
+`;
+
+// Admin only. Creates the account at once; the temporary password comes back once.
+export const CREATE_TEAM_MEMBER: TypedDocumentNode<
+  { createTeamMember: { user: { id: string; name: string; email: string | null; role: Role; loginLink: string | null }; temporaryPassword: string } },
+  { input: { name: string; email: string; role: InvitableRole } }
+> = gql`
+  mutation CreateTeamMember($input: CreateTeamMemberInput!) {
+    createTeamMember(input: $input) {
+      user {
+        id
+        name
+        email
+        role
+        loginLink
+      }
+      temporaryPassword
+    }
   }
 `;
 
@@ -185,3 +213,13 @@ export const REGENERATE_ACCESS_KEY: TypedDocumentNode<{ regenerateAccessKey: str
 
 // English: shown through tx() (lib/i18n), so each language has its own words.
 export const ROLE_LABELS: Record<Role, AppKey> = { ADMIN: "Admin", JUDGE: "Judge", STAFF: "Staff" };
+
+// A new personal login link: the old one stops working and the person is logged out everywhere.
+export const NEW_LOGIN_LINK: TypedDocumentNode<{ newLoginLink: { id: string; loginLink: string | null } }, { userId: string }> = gql`
+  mutation NewLoginLink($userId: ID!) {
+    newLoginLink(userId: $userId) {
+      id
+      loginLink
+    }
+  }
+`;

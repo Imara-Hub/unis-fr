@@ -7,6 +7,8 @@ import { FullPageSpinner } from "@/components/AuthCard";
 import { ServerUnreachable } from "@/components/ServerUnreachable";
 import { DashboardShell } from "@/components/DashboardShell";
 import { LOGOUT, ME } from "@/lib/graphql/auth";
+import { setViewedSeason } from "@/lib/season";
+import { clearSessionToken, setPhotoTicket } from "@/lib/sessionToken";
 import { useLiveUpdates } from "@/lib/useLiveUpdates";
 
 const TAB_TITLES: Record<string, string> = { ADMIN: "Admin", JUDGE: "Judge", STAFF: "Staff" };
@@ -19,6 +21,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [logout, { loading: loggingOut }] = useMutation(LOGOUT);
 
   const user = data?.me;
+  // Before the pages below render their pictures (they only render once `user` is known). The
+  // ticket is the same for hours, so this rarely changes anything.
+  if (data?.photoTicket) setPhotoTicket(data.photoTicket);
   const pathname = usePathname();
   // The browser tab says who is using it, like "Stage · Musabaqa" on the stage screen.
   // Set again after each page change, because Next puts its own title back on navigation.
@@ -31,13 +36,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const loggedOut = !loading && !error && !user;
 
   useEffect(() => {
-    if (loggedOut) router.replace("/login");
+    if (!loggedOut) return;
+    setViewedSeason(null); // logging in happens in the current year
+    router.replace("/login");
   }, [loggedOut, router]);
 
   async function onLogout() {
     try {
       await logout();
     } finally {
+      clearSessionToken();
       // Forget all cached data from this user, even if the request failed.
       await client.clearStore();
       router.replace("/login");

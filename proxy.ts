@@ -1,15 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_COOKIE, checkAccess, enterWithInvitation, grantAccess } from "@/lib/access";
+import { ACCESS_COOKIE, checkAccess, enterWithInvitation, enterWithLoginLink, grantAccess } from "@/lib/access";
 
 // Runs before every page (not assets, see `config`). See lib/access.ts for the idea.
 //
-// Public, for participants and anyone they share with: the registration form, the results, the
-// stage screen. Everything else is the team's and needs the access cookie; without it the visitor
+// Public, for participants and anyone they share with: the registration form, the registration
+// check, the results, the stage screen. Everything else is the team's and needs the access cookie; without it the visitor
 // is sent to the public results page, as if the rest did not exist.
-const PUBLIC = [/^\/results(\/|$)/, /^\/register\//, /^\/stage-screen\//, /^\/enter\//];
+const PUBLIC = [/^\/results(\/|$)/, /^\/check-registration(\/|$)/, /^\/register\//, /^\/stage-screen\//, /^\/enter\//];
 // An invite link comes from the admin: opening it unlocks this browser, so the new judge or staff
 // member can log in afterwards.
 const INVITE = /^\/invite\/([^/?#]+)/;
+// A judge's or staff member's personal login link: unlocks this browser too, then the page logs
+// them in.
+const LOGIN_LINK = /^\/go\/([^/?#]+)/;
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -18,10 +21,13 @@ export async function proxy(request: NextRequest) {
 
   const cookie = request.cookies.get(ACCESS_COOKIE)?.value;
   const invite = INVITE.exec(pathname);
-  if (invite) {
+  const loginLink = LOGIN_LINK.exec(pathname);
+  if (invite || loginLink) {
     const response = NextResponse.next();
     if ((await checkAccess(cookie)) !== "no") return response;
-    const token = await enterWithInvitation(decodeURIComponent(invite[1]));
+    const token = invite
+      ? await enterWithInvitation(decodeURIComponent(invite[1]!))
+      : await enterWithLoginLink(decodeURIComponent(loginLink![1]!));
     // A dead link still opens the page: it explains itself there ("not valid anymore").
     return token ? grantAccess(request, response, token) : response;
   }

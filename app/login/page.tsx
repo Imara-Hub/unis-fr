@@ -14,6 +14,8 @@ import { readApiError } from "@/lib/errors";
 import { GREETING } from "@/lib/greeting";
 import { useI18n } from "@/lib/i18n";
 import { LOGIN, LOGIN_WITH_GOOGLE, ME, SIGNUP_OPEN } from "@/lib/graphql/auth";
+import { setSessionToken } from "@/lib/sessionToken";
+import { setViewedSeason } from "@/lib/season";
 
 export default function LoginPage() {
   return (
@@ -44,6 +46,9 @@ function Login() {
   });
   // The account was just created with Google: say to log in the same way.
   const viaGoogle = params.get("google") === "1";
+  // Shared handoff link (/enter/<key>?email=… or /login?email=…): keep the form even if the
+  // admin is still logged in on this browser, so the new judge can sign in as themselves.
+  const handedEmail = (params.get("email") ?? "").trim().toLowerCase();
 
   const [email, setEmail] = useState(() => params.get("email") ?? "");
   const [password, setPassword] = useState("");
@@ -52,16 +57,20 @@ function Login() {
 
   // Already logged in: go straight to the dashboard. Nobody has an account yet (first time the
   // app is opened, empty database): create the admin account first.
-  // Coming from an invitation, the form shows even if someone is logged in here: they stay
-  // logged in until the new person logs in (and only on this browser).
+  // Invitation or team handoff with another email: show the form; they stay logged in until
+  // the new person logs in (and only on this browser / this tab's token).
   const someoneHere = me.data?.me ?? null;
-  const stay = justCreated && Boolean(someoneHere);
+  const forSomeoneElse = Boolean(handedEmail && someoneHere && (someoneHere.email ?? "").toLowerCase() !== handedEmail);
+  const stay = (justCreated || forSomeoneElse) && Boolean(someoneHere);
   useEffect(() => {
-    if (someoneHere && !justCreated) router.replace("/dashboard");
+    if (someoneHere && !justCreated && !forSomeoneElse) router.replace("/dashboard");
     else if (!someoneHere && firstRun) router.replace("/signup");
-  }, [someoneHere, justCreated, firstRun, router]);
+  }, [someoneHere, justCreated, forSomeoneElse, firstRun, router]);
 
-  async function finishLogin() {
+  async function finishLogin(token: string | null) {
+    // Kept per tab so another window can stay logged in as someone else.
+    setSessionToken(token);
+    setViewedSeason(null); // a new login starts in the current year
     // Nothing loaded for whoever used this browser before is kept for the new login.
     await client.clearStore();
     router.replace("/dashboard");
@@ -71,8 +80,9 @@ function Login() {
     e.preventDefault();
     setError(null);
     try {
-      await login({ variables: { email, password } });
-      await finishLogin();
+      const res = await login({ variables: { email, password } });
+      if (!res.data?.login.user) throw new Error("Not logged in");
+      await finishLogin(res.data.login.token);
     } catch (err) {
       setError(apiError(readApiError(err)).message);
       setPassword("");
@@ -82,8 +92,9 @@ function Login() {
   async function onGoogle(idToken: string) {
     setError(null);
     try {
-      await loginWithGoogle({ variables: { idToken } });
-      await finishLogin();
+      const res = await loginWithGoogle({ variables: { idToken } });
+      if (!res.data?.loginWithGoogle.user) throw new Error("Not logged in");
+      await finishLogin(res.data.loginWithGoogle.token);
     } catch (err) {
       setError(apiError(readApiError(err)).message);
     }
@@ -112,6 +123,14 @@ function Login() {
                   {viaGoogle ? t.google.accountCreatedHelp : t.login.accountCreatedHelp}
                   {someoneHere && ` ${t.login.stillLoggedIn(someoneHere.name)}`}
                 </Alert.Description>
+              </Alert.Content>
+            </Alert.Root>
+          )}
+          {forSomeoneElse && !justCreated && !error && (
+            <Alert.Root status="info" rounded="lg">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Description>{t.login.stillLoggedIn(someoneHere!.name)}</Alert.Description>
               </Alert.Content>
             </Alert.Root>
           )}

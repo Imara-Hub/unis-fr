@@ -67,9 +67,20 @@ export const sw: Messages = {
     SHEET_LOCKED: "Karatasi hii imeshatumwa na haiwezi kubadilishwa tena.",
     ALREADY_RECITED: "Mshiriki huyu ameshasoma.",
     PANEL_COMPLETE: "Majaji wote wameshatuma karatasi zao kwa mshiriki huyu: alama ni ya mwisho.",
+    MARKS_DIFFER: "Hesabu yako inatofautiana na ya majaji wengine. Hesabu tena alama zilizoonyeshwa. Ukiwa na uhakika, muulize msimamizi.",
+    NOT_FINALIST: "Fainali imeanza: ni wafainali tu wanaoweza kuitwa.",
+    FINAL_STARTED: "Fainali imeanza: tasfia haiwezi kubadilika tena.",
+    FINAL_UNDERWAY: "Mfainali tayari amechagua bahasha ya fainali: fainali haiwezi kubatilishwa tena.",
+    ROUND_NOT_OVER: "Tasfia haijaisha: kuna mtu jukwaani au bado anasubiri karatasi za majaji.",
+    NO_FINALISTS: "Hakuna aliyefaulu tasfia: hakuna fainali.",
+    ROUND_CHANGED: "Karatasi hii ilijazwa wakati wa tasfia, lakini sasa fainali iko jukwaani: haikuhifadhiwa.",
+    RESULTS_PUBLISHED: "Matokeo yamechapishwa: yaondoe kwanza ili kubadilisha alama.",
+    NOT_CHIEF_JUDGE: "Jaji mkuu pekee ndiye anayewaita washiriki.",
+    SEASON_CLOSED: "Huu ni mwaka uliopita: unaweza kuangaliwa tu. Rudi kwenye mwaka wa sasa ili kufanya mabadiliko.",
     GOOGLE_DISABLED: "Kuingia kwa Google hakujawekwa kwenye seva hii. Tumia barua pepe na nenosiri lako.",
     GOOGLE_INVALID: "Kuingia kwa Google hakukufanikiwa. Jaribu tena.",
     GOOGLE_NO_ACCOUNT: "Hakuna akaunti ya timu inayotumia barua pepe hii ya Google. Muombe msimamizi kiungo cha mwaliko, au ingia kwa barua pepe na nenosiri lako.",
+    GOOGLE_ACCOUNT_USED: "Akaunti hii ya Google tayari imeunganishwa na akaunti nyingine ya timu. Chagua akaunti nyingine ya Google, au ingia kwa akaunti hiyo.",
   },
 
   server: {
@@ -149,6 +160,21 @@ export const sw: Messages = {
     invalidTitle: "Mwaliko si halali",
     invalidSubtitle: "Kiungo hiki kimeshatumika, kimefutwa au muda wake umeisha.",
     invalidHelp: "Muombe msimamizi akutumie kiungo kipya cha mwaliko.",
+  },
+
+  registration: {
+    eyebrow: "Usajili wa Musabaqa",
+    title: "Je, usajili wangu umekubaliwa?",
+    subtitle: "Andika jina la mshiriki kama lilivyotolewa wakati wa kujisajili.",
+    search: "Angalia usajili",
+    noMatch: "Hakuna usajili uliopatikana kwa jina hili. Hakikisha tahajia, au andika jina kama lilivyo kwenye fomu.",
+    approved: "Umekubaliwa",
+    rejected: "Haukukubaliwa",
+    pending: "Unakaguliwa",
+    approvedHelp: "Usajili umekubaliwa: tutaonana kwenye mashindano.",
+    rejectedHelp: "Usajili haukukubaliwa. Wasiliana na waandaaji kujua sababu.",
+    pendingHelp: "Waandaaji bado hawajakagua usajili huu. Rudi baadaye.",
+    number: (n: number) => `Mpangilio wa kupita: N° ${n}`,
   },
 
   results: {

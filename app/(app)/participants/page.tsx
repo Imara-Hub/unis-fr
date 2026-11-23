@@ -13,7 +13,6 @@ import {
   Input,
   InputGroup,
   Menu,
-  NativeSelect,
   Portal,
   SimpleGrid,
   Skeleton,
@@ -30,7 +29,7 @@ import { RESULT_COLORS } from "@/components/OverviewCharts";
 import { PageHeader } from "@/components/PageHeader";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { StatusBadge } from "@/components/StatusBadge";
-import { apiUrl } from "@/lib/api";
+import { authedUrl } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { ageOf } from "@/lib/dates";
 import { readApiError } from "@/lib/errors";
@@ -45,8 +44,9 @@ import {
 import { ME } from "@/lib/graphql/auth";
 import { formatPhone, reachPhone } from "@/lib/phone";
 import type { AppKey } from "@/lib/i18n";
-import { Copy, Download, Ellipsis, Eye, LayoutGrid, List, Phone, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowUpDown, Copy, Download, Ellipsis, Eye, LayoutGrid, List, Phone, Printer, Search, SlidersHorizontal, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { Dropdown, DropdownCard, dropdownItemStyle, ItemBadge } from "@/components/Dropdown";
 
 // Result tabs: filtered on the server, with the server's counts.
 const TABS: {
@@ -55,7 +55,7 @@ const TABS: {
   count: "total" | "pending" | "passed" | "failed";
   dot: string;
 }[] = [
-  { status: null, label: "All", count: "total", dot: "#B3832A" },
+  { status: null, label: "All", count: "total", dot: "#E07F0A" },
   { status: "PENDING", label: "Not judged", count: "pending", dot: "#a1a1aa" },
   { status: "PASSED", label: "Passed", count: "passed", dot: RESULT_COLORS.passed },
   { status: "FAILED", label: "Failed", count: "failed", dot: RESULT_COLORS.failed },
@@ -195,10 +195,18 @@ export default function ParticipantsPage() {
             : tx("Approved participants. Points appear by themselves.")
         }
         actions={
-          <ExportResultsButton variant="outline" colorPalette="brand" bg="white">
-            <DownloadIcon />
-            {tx("Results PDF")}
-          </ExportResultsButton>
+          <Flex gap="2" wrap="wrap" justify="flex-end">
+            <Button asChild variant="outline" colorPalette="brand" bg="white">
+              <NextLink href="/print/participants">
+                <Printer size={16} aria-hidden />
+                {tx("Print the list")}
+              </NextLink>
+            </Button>
+            <ExportResultsButton variant="outline" colorPalette="brand" bg="white">
+              <DownloadIcon />
+              {tx("Results PDF")}
+            </ExportResultsButton>
+          </Flex>
         }
       />
 
@@ -298,21 +306,17 @@ export default function ParticipantsPage() {
               )}
             </Button>
 
-            <NativeSelect.Root size="sm" w={{ base: "auto", sm: "48" }} flex={{ base: "1", sm: "none" }}>
-              <NativeSelect.Field
-                bg="white"
-                aria-label={tx("Sort")}
-                value={sort}
-                onChange={(e) => setSort(e.currentTarget.value as SortKey)}
-              >
-                {Object.entries(SORTS).map(([key, s]) => (
-                  <option key={key} value={key}>
-                    {tx(s.label)}
-                  </option>
-                ))}
-              </NativeSelect.Field>
-              <NativeSelect.Indicator />
-            </NativeSelect.Root>
+            <Dropdown
+              label={tx("Sort")}
+              icon={<ArrowUpDown size={15} strokeWidth={2} />}
+              size="sm"
+              shape="pill"
+              value={sort}
+              onChange={(v) => setSort(v as SortKey)}
+              options={Object.entries(SORTS).map(([key, s]) => ({ value: key, label: tx(s.label) }))}
+              w={{ base: "auto", sm: "52" }}
+              flex={{ base: "1", sm: "none" }}
+            />
 
             <Flex borderWidth="1px" rounded="md" bg="white" p="0.5" gap="0.5" role="group" aria-label={tx("View")}>
               <ViewButton active={view === "list"} label={tx("List")} onClick={() => changeView("list")}>
@@ -574,7 +578,7 @@ function PhotoGrid({ participants }: { participants: ParticipantRow[] }) {
         >
           <NextLink href={`/participants/${p.id}`}>
             <Box position="relative" bg="bg.muted" aspectRatio={3 / 4}>
-              <Image src={apiUrl(p.photoUrl)} alt="" w="full" h="full" objectFit="cover" loading="lazy" />
+              <Image src={authedUrl(p.photoUrl)} alt="" w="full" h="full" objectFit="cover" loading="lazy" />
               <Box position="absolute" top="2" right="2">
                 <StatusBadge status={p.status} finalist={p.finalist} />
               </Box>
@@ -625,10 +629,12 @@ function RowMenu({ participant: p }: { participant: ParticipantRow }) {
       </Menu.Trigger>
       <Portal>
         <Menu.Positioner>
-          <Menu.Content minW="52">
-            <Menu.Item value="open" asChild>
+          <DropdownCard title={p.fullName} minW="60">
+            <Menu.Item value="open" asChild {...dropdownItemStyle()}>
               <NextLink href={`/participants/${p.id}`}>
-                <EyeIcon />
+                <ItemBadge>
+                  <EyeIcon />
+                </ItemBadge>
                 {tx("Open details")}
               </NextLink>
             </Menu.Item>
@@ -638,22 +644,29 @@ function RowMenu({ participant: p }: { participant: ParticipantRow }) {
               onSelect={() => {
                 void copyText(phone ?? "").then(setCopied);
               }}
+              {...dropdownItemStyle()}
             >
-              <CopyIcon />
+              <ItemBadge>
+                <CopyIcon />
+              </ItemBadge>
               {copied === null ? tx("Copy phone number") : copied ? tx("Copied!") : tx("Copy failed")}
             </Menu.Item>
-            <Menu.Item value="call" asChild>
+            <Menu.Item value="call" asChild {...dropdownItemStyle()}>
               <a href={`tel:${phone ?? ""}`}>
-                <PhoneIcon />
+                <ItemBadge>
+                  <PhoneIcon />
+                </ItemBadge>
                 {tx("Call {phone}", { phone: formatPhone(phone) })}
               </a>
             </Menu.Item>
-          </Menu.Content>
+          </DropdownCard>
         </Menu.Positioner>
       </Portal>
     </Menu.Root>
   );
 }
+
+const ALL = "__all__";
 
 function FilterSelect({
   label,
@@ -675,17 +688,14 @@ function FilterSelect({
       <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
         {label}
       </Text>
-      <NativeSelect.Root size="sm">
-        <NativeSelect.Field bg="white" value={value} onChange={(e) => onChange(e.currentTarget.value)} aria-label={label}>
-          <option value="">{placeholder}</option>
-          {values.map((v) => (
-            <option key={v} value={v}>
-              {labels?.[v] ?? v}
-            </option>
-          ))}
-        </NativeSelect.Field>
-        <NativeSelect.Indicator />
-      </NativeSelect.Root>
+      {/* "All" is the empty value; a menu item needs a value of its own. */}
+      <Dropdown
+        label={label}
+        size="sm"
+        value={value || ALL}
+        onChange={(v) => onChange(v === ALL ? "" : v)}
+        options={[{ value: ALL, label: placeholder }, ...values.map((v) => ({ value: v, label: labels?.[v] ?? v }))]}
+      />
     </Stack>
   );
 }

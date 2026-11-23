@@ -27,11 +27,13 @@ const USER_FIELDS = gql`
   }
 `;
 
-export const ME: TypedDocumentNode<{ me: User | null }> = gql`
+// photoTicket: this tab's ticket for picture addresses (see lib/sessionToken.ts).
+export const ME: TypedDocumentNode<{ me: User | null; photoTicket: string | null }> = gql`
   query Me {
     me {
       ...UserFields
     }
+    photoTicket
   }
   ${USER_FIELDS}
 `;
@@ -42,46 +44,69 @@ export const SIGNUP_OPEN: TypedDocumentNode<{ signupOpen: boolean }> = gql`
   }
 `;
 
-export const SIGNUP: TypedDocumentNode<{ signup: { user: User } }, { input: SignupInput }> = gql`
+export interface AuthPayload {
+  user: User;
+  // Development only (per-tab logins); null in production, where the cookie holds the login.
+  token: string | null;
+}
+
+export const SIGNUP: TypedDocumentNode<{ signup: AuthPayload }, { input: SignupInput }> = gql`
   mutation Signup($input: SignupInput!) {
     signup(input: $input) {
       user {
         ...UserFields
       }
+      token
     }
   }
   ${USER_FIELDS}
 `;
 
-export const LOGIN: TypedDocumentNode<{ login: { user: User } }, { email: string; password: string }> = gql`
+export const LOGIN: TypedDocumentNode<{ login: AuthPayload }, { email: string; password: string }> = gql`
   mutation Login($email: String!, $password: String!) {
     login(email: $email, password: $password) {
       user {
         ...UserFields
       }
+      token
     }
   }
   ${USER_FIELDS}
 `;
 
 // Sign in with Google: the ID token Google's button hands us.
-export const LOGIN_WITH_GOOGLE: TypedDocumentNode<{ loginWithGoogle: { user: User } }, { idToken: string }> = gql`
+export const LOGIN_WITH_GOOGLE: TypedDocumentNode<{ loginWithGoogle: AuthPayload }, { idToken: string }> = gql`
   mutation LoginWithGoogle($idToken: String!) {
     loginWithGoogle(idToken: $idToken) {
       user {
         ...UserFields
       }
+      token
     }
   }
   ${USER_FIELDS}
 `;
 
-export const SIGNUP_WITH_GOOGLE: TypedDocumentNode<{ signupWithGoogle: { user: User } }, { idToken: string }> = gql`
+// Personal login link (/go/<code>): logs in with no password.
+export const LOGIN_WITH_LINK: TypedDocumentNode<{ loginWithLink: AuthPayload }, { code: string }> = gql`
+  mutation LoginWithLink($code: String!) {
+    loginWithLink(code: $code) {
+      user {
+        ...UserFields
+      }
+      token
+    }
+  }
+  ${USER_FIELDS}
+`;
+
+export const SIGNUP_WITH_GOOGLE: TypedDocumentNode<{ signupWithGoogle: AuthPayload }, { idToken: string }> = gql`
   mutation SignupWithGoogle($idToken: String!) {
     signupWithGoogle(idToken: $idToken) {
       user {
         ...UserFields
       }
+      token
     }
   }
   ${USER_FIELDS}

@@ -1,15 +1,20 @@
 "use client";
 
 import { useQuery } from "@apollo/client/react";
-import { Badge, Box, Card, Circle, Flex, Heading, SimpleGrid, Stack, Table, Text } from "@chakra-ui/react";
-import { Hourglass, Mic } from "lucide-react";
+import { Badge, Box, Button, Card, Circle, Flex, Heading, IconButton, SimpleGrid, Stack, Table, Text } from "@chakra-ui/react";
+import NextLink from "next/link";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, Hourglass, Mic, Trophy } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { RoleOnly } from "@/components/AdminOnly";
 import { ErrorAlert } from "@/components/ErrorAlert";
+import { FinalControl } from "@/components/FinalControl";
+import { FinalResults } from "@/components/FinalResults";
 import { EnvelopeQuestions, ParticipantInfo } from "@/components/JudgingParts";
+import { NumberTag } from "@/components/NumberTag";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
-import { StatusBadge } from "@/components/StatusBadge";
 import { readApiError } from "@/lib/errors";
-import { PARTICIPANT_SHEETS, STAGE, STAGE_QUEUE, type JudgeSheet } from "@/lib/graphql/judging";
+import { ME } from "@/lib/graphql/auth";
+import { byPassageOrder, PARTICIPANT_SHEETS, STAGE, STAGE_QUEUE, type JudgeSheet, type QueueParticipant, type Round } from "@/lib/graphql/judging";
 import { PARTICIPANT_COUNTS } from "@/lib/graphql/participants";
 import { useI18n } from "@/lib/i18n";
 import { MARK_TYPES } from "@/lib/marks";
@@ -20,7 +25,13 @@ import { MarkName } from "@/components/MarkName";
 export default function StagePage() {
   const stage = useQuery(STAGE);
   const counts = useQuery(PARTICIPANT_COUNTS);
-  const onStage = stage.data?.stage.participant ?? null;
+  const queue = useQuery(STAGE_QUEUE);
+  const isAdmin = useQuery(ME).data?.me?.role === "ADMIN";
+  // Finished: the last participant stays "on stage" (nobody else is called): the end shows instead.
+  const finished = stage.data?.stage.finished ?? false;
+  const round: Round = stage.data?.stage.round ?? "TASFIA";
+  const final = round === "FINAL";
+  const onStage = finished ? null : (stage.data?.stage.participant ?? null);
   const judgeCount = counts.data?.settings.judgeCount ?? 4;
   const { tx } = useI18n();
 
@@ -28,13 +39,17 @@ export default function StagePage() {
     <RoleOnly roles={["ADMIN", "STAFF"]}>
       <Stack gap={{ base: "5", md: "6" }}>
         <ErrorAlert message={stage.error ? readApiError(stage.error).message : null} />
-        {!stage.data ? (
+        {isAdmin && stage.data && counts.data && (
+          <FinalControl round={round} finalists={counts.data.participantCounts.finalists} tasfiaFinished={!final && finished} />
+        )}
+        {/* Also the panel size first, so "submitted n / total" is never a guess. */}
+        {!stage.data || (!counts.data && !counts.error) ? (
           <Text color="fg.muted">{tx("Loading…")}</Text>
         ) : onStage ? (
           <Card.Root overflow="hidden">
             <ParticipantInfo
               participant={onStage}
-              label={tx("Live · on stage")}
+              label={final ? tx("Final · live on stage") : tx("Live · on stage")}
               right={
                 <Badge colorPalette={onStage.sheetsSubmitted >= judgeCount ? "green" : "gold"} variant="solid" size="md">
                   {tx("Judges submitted {n} / {total}", { n: onStage.sheetsSubmitted, total: judgeCount })}
@@ -45,7 +60,7 @@ export default function StagePage() {
               {onStage.envelope ? (
                 <>
                   <EnvelopeQuestions number={onStage.envelope.number} questions={onStage.envelope.questions} />
-                  <LiveSheets participantId={onStage.id} judgeCount={judgeCount} score={onStage.score} />
+                  <LiveSheets participantId={onStage.id} judgeCount={judgeCount} score={final ? onStage.finalScore : onStage.score} />
                 </>
               ) : (
                 <Flex direction="column" align="center" textAlign="center" gap="2" py="8" color="fg.muted">
@@ -56,6 +71,25 @@ export default function StagePage() {
                   <Text fontSize="sm">{tx("The questions appear here once the participant opens one.")}</Text>
                 </Flex>
               )}
+            </Card.Body>
+          </Card.Root>
+        ) : finished ? (
+          <Card.Root>
+            <Card.Body alignItems="center" textAlign="center" py="12" gap="3">
+              <Circle size="16" bg="gold.50" color="gold.600">
+                <Trophy size={28} strokeWidth={1.75} aria-hidden />
+              </Circle>
+              <Heading size="lg" color="brand.900">
+                {final ? tx("The final is finished") : tx("The tasfia is finished")}
+              </Heading>
+              <Text color="fg.muted">
+                {final
+                  ? tx("Every finalist has recited and every judge's sheet is in. Here is the final ranking.")
+                  : tx("Every participant has recited and every judge's sheet is in. The results are on the Ranking page.")}
+              </Text>
+              <Button asChild colorPalette="brand" size="sm" mt="2">
+                <NextLink href="/ranking">{tx("See the ranking")}</NextLink>
+              </Button>
             </Card.Body>
           </Card.Root>
         ) : (
@@ -71,7 +105,8 @@ export default function StagePage() {
             </Card.Body>
           </Card.Root>
         )}
-        <Order onStageId={onStage?.id ?? null} />
+        {final && <FinalResults participants={queue.data?.participants ?? []} maxScore={counts.data?.settings.maxScore ?? 100} />}
+        <Order onStageId={onStage?.id ?? null} round={round} />
       </Stack>
     </RoleOnly>
   );
@@ -172,60 +207,169 @@ function LiveSheet({ sheet: s }: { sheet: JudgeSheet }) {
   );
 }
 
-// The running order: who still waits and who already recited, with their result.
-function Order({ onStageId }: { onStageId: string | null }) {
+// The running order: who still waits, who is late, and who already recited. Late = they have not
+// recited although someone with a later passage number already did (or is on stage): they were
+// not there when their turn came. They go back to normal once they recite. Results are not shown
+// here: they are on the Ranking page.
+// In the final, only the finalists are in the order.
+function Order({ onStageId, round }: { onStageId: string | null; round: Round }) {
   const { data } = useQuery(STAGE_QUEUE);
-  const all = [...(data?.participants ?? [])].sort((a, b) => a.registeredAt.localeCompare(b.registeredAt));
-  const waiting = all.filter((p) => !p.envelope && p.id !== onStageId);
+  const all = byPassageOrder((data?.participants ?? []).filter((p) => round === "TASFIA" || p.inFinal));
+  const called = all.filter((p) => p.envelope || p.id === onStageId).map((p) => p.number ?? 0);
+  const reached = called.length ? Math.max(...called) : 0;
+  const notYet = all.filter((p) => !p.envelope && p.id !== onStageId);
+  const late = notYet.filter((p) => p.number !== null && p.number < reached);
+  const waiting = notYet.filter((p) => !late.includes(p));
   const recited = all.filter((p) => p.envelope && p.id !== onStageId);
   const { tx } = useI18n();
 
   return (
-    <SimpleGrid columns={{ base: 1, lg: 2 }} gap={{ base: "5", md: "6" }}>
-      {[
-        { key: "waiting", title: tx("Waiting ({n})", { n: waiting.length }), list: waiting, empty: tx("Nobody is waiting.") },
-        { key: "recited", title: tx("Recited ({n})", { n: recited.length }), list: [...recited].reverse(), empty: tx("Nobody has recited yet.") },
-      ].map((col) => (
-        <Card.Root key={col.key}>
-          <Card.Body p={{ base: "4", md: "6" }} gap="3">
+    <SimpleGrid columns={{ base: 1, lg: 3 }} gap={{ base: "5", md: "6" }} alignItems="start">
+      <OrderColumn
+        title={tx("Waiting")}
+        icon={<Clock size={16} aria-hidden />}
+        palette="brand"
+        list={waiting}
+        empty={tx("Nobody is waiting.")}
+        highlightFirst
+      />
+      <OrderColumn
+        title={tx("Late")}
+        icon={<AlertTriangle size={16} aria-hidden />}
+        palette="red"
+        list={late}
+        empty={tx("Nobody is late.")}
+      />
+      <OrderColumn
+        title={tx("Recited")}
+        icon={<CheckCircle2 size={16} aria-hidden />}
+        palette="green"
+        list={[...recited].reverse()} // the last one to recite first
+        empty={tx("Nobody has recited yet.")}
+      />
+    </SimpleGrid>
+  );
+}
+
+// Rows per page in each column: the three columns stay about the same height.
+const ORDER_PAGE = 8;
+
+function OrderColumn({
+  title,
+  icon,
+  palette,
+  list,
+  empty,
+  highlightFirst = false,
+}: {
+  title: string;
+  icon: ReactNode;
+  palette: "brand" | "red" | "green";
+  list: QueueParticipant[];
+  empty: string;
+  highlightFirst?: boolean;
+}) {
+  const { tx } = useI18n();
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(list.length / ORDER_PAGE));
+  const shownPage = Math.min(page, pages - 1); // the list got shorter (someone recited)
+  const from = shownPage * ORDER_PAGE;
+  const shown = list.slice(from, from + ORDER_PAGE);
+
+  return (
+    <Card.Root overflow="hidden">
+      <Box h="1" bg={`${palette}.500`} />
+      <Card.Body p={{ base: "4", md: "5" }} gap="3">
+        <Flex align="center" justify="space-between" gap="2">
+          <Flex align="center" gap="2" color={`${palette}.700`}>
+            <Circle size="7" bg={`${palette}.50`}>
+              {icon}
+            </Circle>
             <Heading size="sm" color="brand.900">
-              {col.title}
+              {title}
             </Heading>
-            {col.list.length === 0 ? (
-              <Text fontSize="sm" color="fg.muted">
-                {col.empty}
-              </Text>
-            ) : (
-              <Stack gap="0">
-                {col.list.map((p, i) => (
-                  <Flex key={p.id} align="center" gap="3" py="2" borderTopWidth={i === 0 ? "0" : "1px"}>
-                    <ParticipantPhoto path={p.photoUrl} size="thumb" />
-                    <Box flex="1" minW="0">
+          </Flex>
+          <Badge colorPalette={palette === "brand" ? "blue" : palette} variant="subtle" rounded="full" px="2.5" fontVariantNumeric="tabular-nums">
+            {list.length}
+          </Badge>
+        </Flex>
+
+        {list.length === 0 ? (
+          <Flex py="6" justify="center" rounded="lg" borderWidth="1px" borderStyle="dashed" color="fg.muted" fontSize="sm">
+            {empty}
+          </Flex>
+        ) : (
+          <Stack gap="1" key={shownPage} animation="fade-in 0.2s ease-out">
+            {shown.map((p, i) => {
+              const next = highlightFirst && from + i === 0;
+              return (
+                <Flex
+                  key={p.id}
+                  align="center"
+                  gap="3"
+                  px="2"
+                  py="2"
+                  rounded="lg"
+                  bg={next ? "brand.50" : undefined}
+                  borderWidth="1px"
+                  borderColor={next ? "brand.200" : "transparent"}
+                  _hover={{ bg: next ? "brand.50" : "bg.subtle" }}
+                >
+                  <ParticipantPhoto path={p.photoUrl} size="thumb" />
+                  <Box flex="1" minW="0">
+                    <Flex align="center" gap="2" minW="0">
+                      <NumberTag number={p.number} />
                       <Text fontWeight="semibold" color="brand.900" truncate>
                         {p.fullName}
                       </Text>
-                      <Text fontSize="xs" color="fg.muted" truncate>
-                        {p.institution}
-                        {p.envelope && ` · ${tx("envelope {n} · {sheets} sheets", { n: p.envelope.number, sheets: p.sheetsSubmitted })}`}
-                      </Text>
-                    </Box>
-                    {p.envelope && (
-                      <Flex align="center" gap="2">
-                        {p.score !== null && (
-                          <Text fontWeight="bold" color="brand.900">
-                            {p.score}
-                          </Text>
-                        )}
-                        <StatusBadge status={p.status} finalist={p.finalist} />
-                      </Flex>
-                    )}
-                  </Flex>
-                ))}
-              </Stack>
-            )}
-          </Card.Body>
-        </Card.Root>
-      ))}
-    </SimpleGrid>
+                    </Flex>
+                    <Text fontSize="xs" color="fg.muted" truncate>
+                      {p.institution}
+                      {p.envelope && ` · ${tx("envelope {n} · {sheets} sheets", { n: p.envelope.number, sheets: p.sheetsSubmitted })}`}
+                    </Text>
+                  </Box>
+                  {next && (
+                    <Badge colorPalette="blue" variant="solid" size="sm" flexShrink={0}>
+                      {tx("Next up")}
+                    </Badge>
+                  )}
+                </Flex>
+              );
+            })}
+          </Stack>
+        )}
+
+        {pages > 1 && (
+          <Flex align="center" justify="space-between" gap="2" pt="2" borderTopWidth="1px">
+            <Text fontSize="xs" color="fg.muted" fontVariantNumeric="tabular-nums">
+              {tx("{from}–{to} of {total}", { from: from + 1, to: from + shown.length, total: list.length })}
+            </Text>
+            <Flex align="center" gap="1">
+              <IconButton
+                size="xs"
+                variant="ghost"
+                aria-label={tx("Previous page")}
+                disabled={shownPage === 0}
+                onClick={() => setPage(shownPage - 1)}
+              >
+                <ChevronLeft size={16} aria-hidden />
+              </IconButton>
+              <Text fontSize="xs" fontWeight="medium" minW="10" textAlign="center" fontVariantNumeric="tabular-nums">
+                {shownPage + 1} / {pages}
+              </Text>
+              <IconButton
+                size="xs"
+                variant="ghost"
+                aria-label={tx("Next page")}
+                disabled={shownPage === pages - 1}
+                onClick={() => setPage(shownPage + 1)}
+              >
+                <ChevronRight size={16} aria-hidden />
+              </IconButton>
+            </Flex>
+          </Flex>
+        )}
+      </Card.Body>
+    </Card.Root>
   );
 }

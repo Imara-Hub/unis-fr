@@ -24,10 +24,21 @@ const MESSAGES: Record<string, string> = {
   SHEET_LOCKED: "This sheet was submitted and can no longer be changed.",
   ALREADY_RECITED: "This participant has already recited.",
   PANEL_COMPLETE: "All the judges already submitted for this participant: the score is final.",
+  MARKS_DIFFER: "Your count differs from the other judges. Recount the marks shown. If you are sure, ask the admin.",
+  NOT_FINALIST: "The final is on: only the finalists can be called.",
+  FINAL_STARTED: "The final has started: the tasfia can no longer change.",
+  FINAL_UNDERWAY: "A finalist already drew a final envelope: the final can no longer be undone.",
+  ROUND_NOT_OVER: "The tasfia is not over: someone is on stage or still waits for the judges' sheets.",
+  NO_FINALISTS: "Nobody passed the tasfia, so there is no final.",
+  ROUND_CHANGED: "This sheet was marked in the tasfia, but the final is on stage now: it was not saved.",
+  RESULTS_PUBLISHED: "The results are published: unpublish them first to change a score.",
+  NOT_CHIEF_JUDGE: "Only the chief judge calls the participants.",
+  SEASON_CLOSED: "This is a past year: it can only be looked at. Go back to the current year to make changes.",
   VALIDATION_FAILED: "Please check the highlighted fields.",
   GOOGLE_DISABLED: "Sign in with Google is not set up on this server. Use your email and password.",
   GOOGLE_INVALID: "Google sign-in did not go through. Try again.",
   GOOGLE_NO_ACCOUNT: "No account on the team uses this Google email. Ask the administrator for an invite link, or log in with your email and password.",
+  GOOGLE_ACCOUNT_USED: "This Google account is already linked to another account on the team. Choose another Google account, or log in with that account.",
   CSRF_FAILED: "Request blocked for security reasons. Reload the page.",
   SERVER_UNAVAILABLE: "The server is not answering right now. Try again in a moment.",
   HTTP_ERROR: "The server refused the request. Reload the page and try again.",
@@ -37,6 +48,15 @@ export interface ApiError {
   code?: string;
   message: string;
   fields: Record<string, string>;
+  // MARKS_DIFFER: where the judge's Fath, Tanbih or Kusita count is not the other judges'.
+  differences?: MarkDifference[];
+}
+
+export interface MarkDifference {
+  question: number; // 1 to 3
+  mark: "fath" | "tanbih" | "kusita";
+  // What the other judges counted when they all agree (e.g. 1: reminded once); null when they do not.
+  count: number | null;
 }
 
 export interface GraphQLErrorLike {
@@ -54,9 +74,15 @@ export function apiErrorFrom(first: GraphQLErrorLike | undefined, overrides: Rec
   const fields: Record<string, string> = {};
   const list = first?.extensions?.fields as { field: string; message: string }[] | undefined;
   for (const f of list ?? []) fields[f.field] = f.message;
+  const differences = first?.extensions?.differences as MarkDifference[] | undefined;
   if (code && overrides[code]) return { code, message: overrides[code], fields };
   // In the chosen language (the English text above is the fallback).
-  return localizeError({ code, message: (code && MESSAGES[code]) || first?.message || "Something went wrong.", fields });
+  return localizeError({
+    code,
+    message: (code && MESSAGES[code]) || first?.message || "Something went wrong.",
+    fields,
+    ...(differences ? { differences } : {}),
+  });
 }
 
 // Turns any Apollo error into { code, message, fields } for the UI.

@@ -67,9 +67,20 @@ export const rn: Messages = {
     SHEET_LOCKED: "Uru rupapuro rwararungitswe kandi ntirugishobora guhindurwa.",
     ALREADY_RECITED: "Uwo yitabira yarasomye.",
     PANEL_COMPLETE: "Abacamanza bose bamaze kurungika impapuro zabo kuri uwo yitabira: amanota ni ntakuka.",
+    MARKS_DIFFER: "Ivyo waharuye ntibihuye n’ivy’abandi bacamanza. Subira uharure ibimenyetso vyerekanwe. Nimba wizeye, baza umuhagarikizi.",
+    NOT_FINALIST: "Rushanzwe rwa nyuma rwatanguye: abarushikiye bonyene ni bo bashobora guhamagarwa.",
+    FINAL_STARTED: "Rushanzwe rwa nyuma rwatanguye: tasfia ntigishobora guhinduka.",
+    FINAL_UNDERWAY: "Uwashikiye rushanzwe rwa nyuma yamaze gutora ibahasha: ntirugishobora guhagarikwa.",
+    ROUND_NOT_OVER: "Tasfia ntirarangira: hari uri ku rubuga canke acitegereje impapuro z’abacamanza.",
+    NO_FINALISTS: "Nta n’umwe yatsinze tasfia: nta rushanzwe rwa nyuma.",
+    ROUND_CHANGED: "Uru rupapuro rwujujwe mu gihe ca tasfia, ariko ubu rushanzwe rwa nyuma ruri ku rubuga: ntirwabitswe.",
+    RESULTS_PUBLISHED: "Ivyavuyemwo vyamaze gutangazwa: banza ubikureho kugira uhindure amanota.",
+    NOT_CHIEF_JUDGE: "Umucamanza mukuru wenyene ni we ahamagara abitabira.",
+    SEASON_CLOSED: "Uyu ni umwaka warenze: urabwa gusa. Subira ku mwaka uriho kugira uhindure ikintu.",
     GOOGLE_DISABLED: "Kwinjira ukoresheje Google ntibishizweho kuri iyi seriveri. Koresha imeyili n’ijambo ry’ibanga vyawe.",
     GOOGLE_INVALID: "Kwinjira ukoresheje Google ntivyakunze. Gerageza kandi.",
     GOOGLE_NO_ACCOUNT: "Nta konti y’umurwi ikoresha iyi meyili ya Google. Saba umuyobozi umuhora w’ubutumire, canke winjire ukoresheje imeyili n’ijambo ry’ibanga vyawe.",
+    GOOGLE_ACCOUNT_USED: "Iyi konti ya Google isanzwe ifatanye n’iyindi konti y’umurwi. Hitamwo iyindi konti ya Google, canke winjire ukoresheje iyo konti.",
   },
 
   server: {
@@ -149,6 +160,21 @@ export const rn: Messages = {
     invalidTitle: "Ubutumire ntibukora",
     invalidSubtitle: "Uyu murongo wamaze gukoreshwa, warafuswe canke igihe cawo carahise.",
     invalidHelp: "Saba umuyobozi akurungikire umurongo mushasha w’ubutumire.",
+  },
+
+  registration: {
+    eyebrow: "Kwiyandikisha muri Musabaqa",
+    title: "Ukwiyandikisha kwanje kwemewe?",
+    subtitle: "Andika izina ry’uwitabira nk’uko ryatanzwe mu kwiyandikisha.",
+    search: "Raba ukwiyandikisha",
+    noMatch: "Nta kwiyandikisha kwabonetse kuri iryo zina. Raba ko wanditse neza, canke wandike izina nk’uko riri ku rupapuro.",
+    approved: "Kwemewe",
+    rejected: "Ntikwemewe",
+    pending: "Kuriko kurasuzumwa",
+    approvedHelp: "Ukwiyandikisha kwemewe: tuzobonana mu marushanwa.",
+    rejectedHelp: "Ukwiyandikisha ntikwemewe. Vugana n’abategura kugira umenye igituma.",
+    pendingHelp: "Abategura ntibarasuzuma uku kwiyandikisha. Uzosubire kuraba mu nyuma.",
+    number: (n: number) => `Urutonde rwo guca: N° ${n}`,
   },
 
   results: {

@@ -3,11 +3,11 @@
 import { Global } from "@emotion/react";
 import { Box, Flex, Grid, Heading, Image, Text } from "@chakra-ui/react";
 import { Mail, MapPin, Phone } from "lucide-react";
-import NextImage from "next/image";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/brand/Logo";
+import { YearBanner } from "@/components/brand/YearBanner";
 import { useRegistrar } from "@/components/Registrar";
-import { apiUrl } from "@/lib/api";
+import { authedUrl } from "@/lib/api";
 import type { ParticipantDetail } from "@/lib/graphql/participants";
 import { useI18n } from "@/lib/i18n";
 import { formatPhone } from "@/lib/phone";
@@ -80,7 +80,7 @@ export function RegistrationSheet({ participant: p }: { participant: Participant
         {/* Banner and title on the left, the passport photo on the right */}
         <Flex justify="space-between" align="flex-start" gap="8mm">
           <Box w="112mm" flexShrink={0}>
-            <NextImage src="/form-banner.png" alt="" width={1600} height={285} priority style={{ width: "100%", height: "auto" }} />
+            <YearBanner w="100%" />
             <Heading
               as="h1"
               mt="9mm"
@@ -99,7 +99,7 @@ export function RegistrationSheet({ participant: p }: { participant: Participant
           <Box w="37mm" h="47mm" bg={NAVY} flexShrink={0} overflow="hidden">
             {p && (
               <Image
-                src={apiUrl(p.photoUrl)}
+                src={authedUrl(p.photoUrl)}
                 alt=""
                 w="full"
                 h="full"

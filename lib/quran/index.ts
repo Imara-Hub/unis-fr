@@ -1,8 +1,11 @@
-// A question is where the recitation starts: one ayah, written "surah:ayah" (e.g. "2:255").
-// The participant recites the whole mushaf page that holds it (Madani mushaf, 604 pages).
-// Each question comes from its own third of the Quran:
+// A question is where the recitation starts and where it finishes: two ayahs, written
+// "surah:ayah-surah:ayah" (e.g. "2:255-2:260"), in the Madina mushaf (604 pages of 15 lines).
+// In the tasfia a question is one page from its start, in the final half a page (ROUND_LINES);
+// the admin may move the end. An older question holds only its start ("2:255"): one page.
+// Each question starts in its own third of the Quran:
 //   question 1 → juz 1–10, question 2 → juz 11–20, question 3 → juz 21–30.
-// The same file is in unis-be/src/lib/quran.ts: keep both identical (only the import differs).
+// The same file is in unis-be/src/lib/quran.ts: keep both identical (only the imports differ).
+import { AYAH_LINES } from "./lines";
 import { JUZ_STARTS, PAGE_STARTS, SURAHS } from "./meta";
 
 export { SURAHS };
@@ -39,7 +42,17 @@ export const isAyah = ({ surah, ayah }: AyahRef) =>
   Number.isInteger(surah) && Number.isInteger(ayah) && surah >= 1 && surah <= 114 && ayah >= 1 && ayah <= ayahCount(surah);
 
 /** 0-based position in the whole Quran. */
-const indexOf = ({ surah, ayah }: AyahRef) => SURAH_OFFSETS[surah - 1]! + ayah - 1;
+export const indexOf = ({ surah, ayah }: AyahRef) => SURAH_OFFSETS[surah - 1]! + ayah - 1;
+
+// The mushaf line each ayah starts on (see lines.ts): (page - 1) × 15 + line - 1.
+const FIRST_LINE: number[] = [];
+{
+  let line = 0;
+  for (let i = 0; i < AYAH_LINES.length; i += 2) {
+    line += parseInt(AYAH_LINES[i]!, 36);
+    FIRST_LINE.push(line);
+  }
+}
 
 function fromIndex(index: number): AyahRef {
   let surah = 114;
@@ -133,3 +146,61 @@ export const surahsInJuz = (juz: number) => surahsInSpan(juzSpan([juz, juz]));
 
 /** The ayahs of a surah inside this juz: [first, last], inclusive, or null if none. */
 export const ayahRangeInJuz = (surah: number, juz: number) => ayahRangeInSpan(surah, juzSpan([juz, juz]));
+
+// ---- Where a question starts and finishes ----
+
+export type Round = "TASFIA" | "FINAL";
+export const ROUNDS: readonly Round[] = ["TASFIA", "FINAL"];
+/** Mushaf lines a question covers: one whole page in the tasfia, half a page in the final. */
+export const ROUND_LINES: Record<Round, number> = { TASFIA: 15, FINAL: 8 };
+/** The end may be moved by hand, but a question stays within this many pages after its start. */
+export const MAX_QUESTION_PAGES = 5;
+
+export interface Question {
+  start: AyahRef;
+  end: AyahRef;
+}
+
+/**
+ * Where a recitation of `lines` mushaf lines from `start` finishes: the last ayah that begins on
+ * or before the last of those lines (it is recited to its end). Never before `start`.
+ */
+export function spanEnd(start: AyahRef, lines: number): AyahRef {
+  const i = indexOf(start);
+  const target = FIRST_LINE[i]! + Math.max(1, lines) - 1;
+  let j = i;
+  while (j < TOTAL_AYAHS - 1 && FIRST_LINE[j + 1]! <= target) j++;
+  return fromIndex(j);
+}
+
+/** The usual question of this round from `start`: one page (tasfia) or half a page (final). */
+export const questionFrom = (start: AyahRef, round: Round): Question => ({ start, end: spanEnd(start, ROUND_LINES[round]) });
+
+/** "2:255-2:260" → its start and end; an older "2:255" → one page from it. Anything else → null. */
+export function parseQuestion(text: string): Question | null {
+  const m = /^\s*(\d{1,3}\s*:\s*\d{1,3})\s*(?:-\s*(\d{1,3}\s*:\s*\d{1,3})\s*)?$/.exec(text);
+  if (!m) return null;
+  const start = parseRef(m[1]!);
+  if (!start) return null;
+  if (!m[2]) return questionFrom(start, "TASFIA");
+  const end = parseRef(m[2]);
+  return end && isQuestionSpan(start, end) ? { start, end } : null;
+}
+
+/** The end comes at or after the start, and at most MAX_QUESTION_PAGES pages after it. */
+export const isQuestionSpan = (start: AyahRef, end: AyahRef) =>
+  indexOf(end) >= indexOf(start) && pageOf(end) - pageOf(start) <= MAX_QUESTION_PAGES;
+
+export const questionText = ({ start, end }: Question) => `${refText(start)}-${refText(end)}`;
+
+/** A random question `question` (0-based) of this round: a random start in its juz, the usual end. */
+export const randomQuestion = (question: number, round: Round, random: () => number = Math.random): Question =>
+  questionFrom(randomRef(question, random), round);
+
+/** The ayahs an end may be: from the start up to MAX_QUESTION_PAGES pages after it. */
+export function endChoices(start: AyahRef): { first: AyahRef; last: AyahRef } {
+  const lastPage = Math.min(PAGES, pageOf(start) + MAX_QUESTION_PAGES);
+  const next = PAGE_STARTS[lastPage]; // the page after the last one allowed
+  const last = next ? fromIndex(indexOf({ surah: next[0], ayah: next[1] }) - 1) : fromIndex(TOTAL_AYAHS - 1);
+  return { first: start, last };
+}

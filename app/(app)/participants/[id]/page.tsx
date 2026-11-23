@@ -1,23 +1,24 @@
 "use client";
 
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
 import { Badge, Box, Button, Card, DataList, Flex, Heading, Image, Link, SimpleGrid, Stack, Table, Text } from "@chakra-ui/react";
-import { FileText } from "lucide-react";
+import { FileText, Printer, RotateCcw, TriangleAlert } from "lucide-react";
 import NextLink from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
 import { confirmDialog } from "@/components/ConfirmDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
+import { toaster } from "@/components/Toaster";
 import { NumberTag } from "@/components/NumberTag";
 import { ReviewCard } from "@/components/ReviewCard";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
-import { ScoreScale } from "@/components/ScoreScale";
+import { FinalScoreCard } from "@/components/FinalScoreCard";
 import { ReviewBadge, StatusBadge } from "@/components/StatusBadge";
-import { apiUrl } from "@/lib/api";
+import { authedUrl } from "@/lib/api";
 import { ageOf, formatDateTime, formatDay } from "@/lib/dates";
 import { readApiError } from "@/lib/errors";
 import { ME } from "@/lib/graphql/auth";
-import { PARTICIPANT_SHEETS, type JudgeSheet } from "@/lib/graphql/judging";
+import { PARTICIPANT_SHEETS, REOPEN_SHEET, type JudgeSheet, type Round } from "@/lib/graphql/judging";
 import {
   DELETE_PARTICIPANT,
   PARTICIPANT,
@@ -91,16 +92,24 @@ function Participant() {
                 )}
               </Flex>
               <Details participant={participant} isAdmin={role === "ADMIN"} />
-              {role === "ADMIN" && (
-                <Box>
+              <Flex gap="2" wrap="wrap">
+                {role === "ADMIN" && (
                   <Button asChild size="sm" variant="outline" colorPalette="brand">
                     <NextLink href={`/forms/${participant.id}`}>
                       <FileText size={15} aria-hidden />
                       {tx("Registration form (print / PDF)")}
                     </NextLink>
                   </Button>
-                </Box>
-              )}
+                )}
+                {competing && (
+                  <Button asChild size="sm" variant="outline" colorPalette="brand">
+                    <NextLink href={`/print/sheets/${participant.id}`}>
+                      <Printer size={15} aria-hidden />
+                      {role === "JUDGE" ? tx("My sheet (print / PDF)") : tx("Judges’ sheets (print / PDF)")}
+                    </NextLink>
+                  </Button>
+                )}
+              </Flex>
             </Stack>
           </Flex>
         </Card.Body>
@@ -110,7 +119,7 @@ function Participant() {
 
       {participant.idDocumentUrl && <IdDocumentCard path={participant.idDocumentUrl} />}
 
-      {competing && <ScoreCards participant={participant} settings={data.settings} isJudge={role === "JUDGE"} />}
+      {competing && <ScoreCards participant={participant} settings={data.settings} isJudge={role === "JUDGE"} isAdmin={role === "ADMIN"} />}
       {role === "ADMIN" && <DeleteCard participant={participant} />}
     </Stack>
   );
@@ -121,39 +130,25 @@ function ScoreCards({
   participant,
   settings,
   isJudge,
+  isAdmin,
 }: {
   participant: ParticipantDetail;
   settings: { judgeCount: number; maxScore: number; passMark: number };
   isJudge: boolean;
+  isAdmin: boolean;
 }) {
-  const { tx } = useI18n();
   return (
     <>
-      <Card.Root>
-        <Card.Body gap="4">
-          <Flex justify="space-between" align="baseline" gap="3" wrap="wrap">
-            <Stack gap="0">
-              <Heading size="md">{tx("Final score")}</Heading>
-              <Text fontSize="sm" color="fg.muted">
-                {tx("Average of the {total} judges · {n} of {total} submitted", {
-                  total: settings.judgeCount,
-                  n: participant.sheetsSubmitted,
-                })}
-              </Text>
-            </Stack>
-            <Text fontFamily="display" fontSize="3xl" lineHeight="1" color="brand.900">
-              {participant.score ?? "—"}
-              <Text as="span" fontFamily="body" fontSize="md" color="fg.muted">
-                {" "}
-                / {settings.maxScore}
-              </Text>
-            </Text>
-          </Flex>
-          <ScoreScale score={participant.score} passMark={settings.passMark} maxScore={settings.maxScore} />
-        </Card.Body>
-      </Card.Root>
+      <FinalScoreCard
+        score={participant.score}
+        sheetsSubmitted={participant.sheetsSubmitted}
+        judgeCount={settings.judgeCount}
+        maxScore={settings.maxScore}
+        passMark={settings.passMark}
+      />
 
-      <SheetsCard participantId={participant.id} isJudge={isJudge} />
+      <SheetsCard participantId={participant.id} isJudge={isJudge} isAdmin={isAdmin} round="TASFIA" />
+      {participant.inFinal && <SheetsCard participantId={participant.id} isJudge={isJudge} isAdmin={isAdmin} round="FINAL" />}
       <History participantId={participant.id} />
     </>
   );
@@ -167,12 +162,12 @@ function IdDocumentCard({ path }: { path: string }) {
       <Card.Body gap="4">
         <Flex justify="space-between" align="baseline" gap="3" wrap="wrap">
           <Heading size="md">{tx("ID document")}</Heading>
-          <Link href={apiUrl(path)} target="_blank" rel="noopener" fontSize="sm" colorPalette="brand">
+          <Link href={authedUrl(path)} target="_blank" rel="noopener" fontSize="sm" colorPalette="brand">
             {tx("Open full size")}
           </Link>
         </Flex>
         <Image
-          src={apiUrl(path)}
+          src={authedUrl(path)}
           alt={tx("ID card or passport")}
           maxW="md"
           w="full"
@@ -219,15 +214,21 @@ function Details({ participant: p, isAdmin }: { participant: ParticipantDetail; 
 }
 
 // The envelope that was drawn and every judge's sheet (a judge only sees their own).
-function SheetsCard({ participantId, isJudge }: { participantId: string; isJudge: boolean }) {
-  const { data, error } = useQuery(PARTICIPANT_SHEETS, { variables: { id: participantId } });
+// One card per round: the tasfia's, and the final's for a finalist.
+function SheetsCard({ participantId, isJudge, isAdmin, round }: { participantId: string; isJudge: boolean; isAdmin: boolean; round: Round }) {
+  const { data, error } = useQuery(PARTICIPANT_SHEETS, { variables: { id: participantId, round } });
   const p = data?.participant;
   const { tx } = useI18n();
 
   return (
     <Card.Root>
       <Card.Body gap="4">
-        <Heading size="md">{isJudge ? tx("My sheet") : tx("Judges’ sheets")}</Heading>
+        <Flex align="center" gap="2" wrap="wrap">
+          <Heading size="md">{isJudge ? tx("My sheet") : tx("Judges’ sheets")}</Heading>
+          <Badge variant="outline" colorPalette={round === "FINAL" ? "orange" : "teal"}>
+            {round === "FINAL" ? tx("Final") : tx("Tasfia")}
+          </Badge>
+        </Flex>
         <ErrorAlert message={error ? readApiError(error).message : null} />
         {!p ? (
           !error && <Text color="fg.muted">{tx("Loading…")}</Text>
@@ -243,7 +244,7 @@ function SheetsCard({ participantId, isJudge }: { participantId: string; isJudge
             ) : (
               <SimpleGrid columns={{ base: 1, md: 2 }} gap="3">
                 {p.sheets.map((s) => (
-                  <SheetSummary key={s.id} sheet={s} />
+                  <SheetSummary key={s.id} sheet={s} canReopen={isAdmin} />
                 ))}
               </SimpleGrid>
             )}
@@ -254,10 +255,28 @@ function SheetsCard({ participantId, isJudge }: { participantId: string; isJudge
   );
 }
 
-function SheetSummary({ sheet: s }: { sheet: JudgeSheet }) {
+function SheetSummary({ sheet: s, canReopen }: { sheet: JudgeSheet; canReopen: boolean }) {
   const { tx } = useI18n();
+  const client = useApolloClient();
+  const [reopen, { loading: reopening }] = useMutation(REOPEN_SHEET);
+  const differs = s.differs ?? [];
+  const differsAt = (q: number, kind: string) => differs.some((d) => d.question === q + 1 && d.mark === kind);
+
+  // The admin sends the sheet back to its judge (e.g. they miscounted and the others are refused).
+  async function onReopen() {
+    const name = s.judge?.name ?? tx("Removed judge");
+    if (!(await confirmDialog({ message: tx("Send the sheet of {name} back to correct? Their total leaves the score until they submit again.", { name }) }))) return;
+    try {
+      await reopen({ variables: { id: s.id } });
+      await client.refetchQueries({ include: "active" });
+      toaster.create({ type: "success", title: tx("Sent back to {name}", { name }) });
+    } catch (err) {
+      toaster.create({ type: "error", title: readApiError(err).message });
+    }
+  }
+
   return (
-    <Stack gap="2" p="4" rounded="xl" borderWidth="1px" bg={s.submitted ? "white" : "bg.subtle"}>
+    <Stack gap="2" p="4" rounded="xl" borderWidth={differs.length > 0 ? "2px" : "1px"} borderColor={differs.length > 0 ? "red.400" : undefined} bg={s.submitted ? "white" : "bg.subtle"}>
       <Flex justify="space-between" align="center" gap="2">
         <Text fontWeight="semibold" color="brand.900" truncate>
           {s.judge?.name ?? tx("Removed judge")}
@@ -270,6 +289,12 @@ function SheetSummary({ sheet: s }: { sheet: JudgeSheet }) {
           <Badge colorPalette="gray">{tx("Still marking")}</Badge>
         )}
       </Flex>
+      {differs.length > 0 && (
+        <Flex align="center" gap="2" fontSize="sm" color="red.700" fontWeight="medium">
+          <TriangleAlert size={16} aria-hidden style={{ flexShrink: 0 }} />
+          {tx("Differs from the other judges")}
+        </Flex>
+      )}
       <Table.Root size="sm" variant="line">
         <Table.Header>
           <Table.Row>
@@ -287,7 +312,15 @@ function SheetSummary({ sheet: s }: { sheet: JudgeSheet }) {
             <Table.Row key={i}>
               <Table.Cell>{i + 1}</Table.Cell>
               {MARK_TYPES.map((t) => (
-                <Table.Cell key={t.kind} textAlign="center" fontVariantNumeric="tabular-nums" color={q[t.kind] ? `${t.palette}.700` : "fg.subtle"}>
+                <Table.Cell
+                  key={t.kind}
+                  textAlign="center"
+                  fontVariantNumeric="tabular-nums"
+                  color={differsAt(i, t.kind) ? "red.700" : q[t.kind] ? `${t.palette}.700` : "fg.subtle"}
+                  bg={differsAt(i, t.kind) ? "red.100" : undefined}
+                  fontWeight={differsAt(i, t.kind) ? "bold" : undefined}
+                  title={differsAt(i, t.kind) ? tx("Differs from the other judges") : undefined}
+                >
                   {q[t.kind] ?? 0}
                 </Table.Cell>
               ))}
@@ -304,6 +337,12 @@ function SheetSummary({ sheet: s }: { sheet: JudgeSheet }) {
           </Table.Row>
         </Table.Body>
       </Table.Root>
+      {canReopen && s.submitted && (
+        <Button size="sm" variant="outline" colorPalette={differs.length > 0 ? "red" : "gray"} alignSelf="flex-start" loading={reopening} onClick={() => void onReopen()}>
+          <RotateCcw size={14} aria-hidden />
+          {tx("Send back to correct")}
+        </Button>
+      )}
     </Stack>
   );
 }
@@ -340,7 +379,11 @@ function History({ participantId }: { participantId: string }) {
                       <Table.Cell whiteSpace="nowrap">{formatDateTime(h.createdAt)}</Table.Cell>
                       <Table.Cell>{h.changedBy?.name ?? "—"}</Table.Cell>
                       <Table.Cell whiteSpace="nowrap">
-                        {h.oldScore === null ? tx("Submitted {n}", { n: h.newScore ?? "—" }) : `${h.oldScore} → ${h.newScore}`}
+                        {h.oldScore === null
+                          ? tx("Submitted {n}", { n: h.newScore ?? "—" })
+                          : h.newScore === null
+                            ? tx("Sent back to correct ({n})", { n: h.oldScore })
+                            : `${h.oldScore} → ${h.newScore}`}
                       </Table.Cell>
                     </Table.Row>
                   ))}

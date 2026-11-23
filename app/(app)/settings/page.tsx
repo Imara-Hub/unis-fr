@@ -21,6 +21,8 @@ import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
 import { MIN_PASSWORD_LENGTH, PasswordStrength } from "@/components/PasswordInput";
 import { PageBanner } from "@/components/PageBanner";
+import { CompetitionYears } from "@/components/Seasons";
+import { YearLook } from "@/components/YearLook";
 import { ShareLink } from "@/components/ShareLink";
 import { TeamMembers } from "@/components/TeamMembers";
 import { toaster } from "@/components/Toaster";
@@ -34,16 +36,18 @@ import { SET_RESULTS_PUBLISHED, SETTINGS, UPDATE_SETTINGS, type Settings } from 
 import { preparePhoto } from "@/lib/register";
 import { ORG_ACCESS_KEY, REGENERATE_ACCESS_KEY, ROLE_LABELS } from "@/lib/graphql/staff";
 import type { AppKey } from "@/lib/i18n";
-import { Camera, Check, KeyRound, Lock, Trophy, UserRound, Users } from "lucide-react";
+import { CalendarDays, Camera, Check, KeyRound, Lock, Trophy, UserRound, Users } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { MARK_TYPES } from "@/lib/marks";
 
-type Section = "profile" | "password" | "competition" | "team" | "access";
+type Section = "profile" | "password" | "competition" | "years" | "team" | "access";
 
 const SECTIONS: { key: Section; label: AppKey; hint: AppKey; adminOnly: boolean; icon: ReactNode }[] = [
   { key: "profile", label: "My profile", hint: "Picture and name", adminOnly: false, icon: <UserIcon /> },
-  { key: "password", label: "Password", hint: "Change your password", adminOnly: false, icon: <LockIcon /> },
+  // Judges and staff get their password from the admin, who can always read it (Team, Login details).
+  { key: "password", label: "Password", hint: "Change your password", adminOnly: true, icon: <LockIcon /> },
   { key: "competition", label: "Competition", hint: "Judges and pass mark", adminOnly: true, icon: <TrophyIcon /> },
+  { key: "years", label: "Competition years", hint: "Past years, start a new one", adminOnly: true, icon: <CalendarDays size={18} aria-hidden /> },
   { key: "team", label: "Team members", hint: "Roles, names, access", adminOnly: true, icon: <TeamIcon /> },
   { key: "access", label: "Access to the app", hint: "Entry link for owners", adminOnly: true, icon: <KeyIcon /> },
 ];
@@ -144,6 +148,18 @@ export default function SettingsPage() {
           {current === "profile" && <ProfileSection user={user} />}
           {current === "password" && <PasswordSection />}
           {current === "competition" && <CompetitionSection />}
+          {current === "years" && (
+            <SectionCard title={tx("Competition years")} description={tx("Look back at a past year, or start the next one.")}>
+              <CompetitionYears />
+            </SectionCard>
+          )}
+          {current === "years" && (
+            <Box mt="6">
+              <SectionCard title={tx("The year's look")} description={tx("Edition line and banner of this year's forms and public pages.")}>
+                <YearLook />
+              </SectionCard>
+            </Box>
+          )}
           {current === "team" && <TeamSection />}
           {current === "access" && <AccessSection />}
         </Box>
@@ -474,7 +490,7 @@ function ScoringOverview({ rules: r }: { rules: ScoringRules }) {
       share: r.questionPoints,
       color: ["#23305F", "#34437F", "#4A5A9C"][i % 3],
     })),
-    { key: "presence", text: String(r.presencePoints), share: r.presencePoints, color: "#C99A35" },
+    { key: "presence", text: String(r.presencePoints), share: r.presencePoints, color: "#F9971D" },
   ];
   // Fath, Tanbih, Tajweed, Kusita: the order the judges mark them in.
   const penalties = MARK_TYPES.map((t) => ({ sign: t.sign, name: `${t.name} · ${tx(t.rule)}`, points: t.penalty(r) }));

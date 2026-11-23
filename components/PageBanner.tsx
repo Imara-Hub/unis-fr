@@ -108,7 +108,7 @@ export function PageBanner({
       mb={{ base: "6", md: "8" }}
     >
       <Box position="absolute" insetY="0" right="0" w={{ base: "full", md: "50%" }} aria-hidden>
-        <StarLattice color="#C99A35" opacity={0.3} />
+        <StarLattice color="#F9971D" opacity={0.3} />
         <Box
           position="absolute"
           inset="0"

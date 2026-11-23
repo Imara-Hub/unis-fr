@@ -10,7 +10,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { EditEnvelopeDialog } from "@/components/EditEnvelopeDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { MushafPage } from "@/components/MushafPage";
-import { QuestionPicker } from "@/components/QuestionPicker";
+import { QuestionPicker, questionsForRound, RoundChoice } from "@/components/QuestionPicker";
 import { PageBanner } from "@/components/PageBanner";
 import { isLocalLink } from "@/components/ShareLink";
 import { EnvelopeFace } from "@/components/StageEnvelope";
@@ -24,11 +24,13 @@ import {
   DELETE_UNUSED_ENVELOPES,
   ENVELOPES,
   REGENERATE_STAGE_SCREEN_LINK,
+  STAGE,
   STAGE_SCREEN_LINK,
   type Envelope,
+  type Round,
 } from "@/lib/graphql/judging";
 import { useI18n } from "@/lib/i18n";
-import { parseRef, QUESTION_JUZ, randomRef, refText } from "@/lib/quran";
+import { parseQuestion, QUESTION_JUZ, questionText, randomQuestion } from "@/lib/quran";
 
 const EMPTY = ["", "", ""];
 
@@ -59,7 +61,7 @@ export default function EnvelopesPage() {
         }
         rings={[
           { label: tx("Available"), value: data ? unused.length : undefined, total: envelopes.length, color: "#4ADE80" },
-          { label: tx("Used"), value: data ? envelopes.length - unused.length : undefined, total: envelopes.length, color: "#E2C06A" },
+          { label: tx("Used"), value: data ? envelopes.length - unused.length : undefined, total: envelopes.length, color: "#FBB75E" },
         ]}
       />
       <Stack gap={{ base: "6", md: "8" }}>
@@ -206,9 +208,18 @@ function StageScreenCard() {
   );
 }
 
+// The round new envelopes are for: the round on stage (the final once the admin started it),
+// until the admin picks the other one.
+function useRoundChoice() {
+  const stageRound = useQuery(STAGE).data?.stage.round ?? "TASFIA";
+  const [picked, setPicked] = useState<Round | null>(null);
+  return [picked ?? stageRound, setPicked] as const;
+}
+
 function EnvelopeForm() {
-  // "surah:ayah" each.
+  // "surah:ayah-surah:ayah" each: where the participant starts and finishes.
   const [questions, setQuestions] = useState<string[]>(EMPTY);
+  const [round, setRound] = useRoundChoice();
   const [preview, setPreview] = useState<number | null>(null);
   const setQuestion = (i: number, value: string) => setQuestions((all) => all.map((old, j) => (j === i ? value : old)));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -216,6 +227,7 @@ function EnvelopeForm() {
   const [saved, setSaved] = useState<number | null>(null);
   const [create, { loading }] = useMutation(CREATE_ENVELOPE, { refetchQueries: [{ query: ENVELOPES }] });
   const { tx } = useI18n();
+  const previewed = preview !== null ? parseQuestion(questions[preview] ?? "") : null;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -223,7 +235,7 @@ function EnvelopeForm() {
     setFieldErrors({});
     setSaved(null);
     try {
-      const res = await create({ variables: { questions } });
+      const res = await create({ variables: { questions, round } });
       setSaved(res.data?.createEnvelope.number ?? null);
       setQuestions(EMPTY);
     } catch (err) {
@@ -247,10 +259,17 @@ function EnvelopeForm() {
                   {tx("Write new questions")}
                 </Heading>
                 <Text fontSize="sm" color="fg.muted">
-                  {tx("Choose the ayah each question starts from. The participant recites the whole page.")}
+                  {tx("Choose where each question starts and where it finishes. In the tasfia the participant recites one page from the start, in the final half a page; you may move the end.")}
                 </Text>
               </Box>
             </Flex>
+            <RoundChoice
+              value={round}
+              onChange={(next) => {
+                setRound(next);
+                setQuestions((all) => questionsForRound(all, next));
+              }}
+            />
             <ErrorAlert message={error} />
             <SimpleGrid columns={{ base: 1, md: 3 }} gap="4">
               {questions.map((q, i) => (
@@ -258,6 +277,7 @@ function EnvelopeForm() {
                   key={i}
                   index={i}
                   value={q}
+                  round={round}
                   error={fieldErrors[`questions.${i}`]}
                   previewing={preview === i}
                   onChange={(value) => setQuestion(i, value)}
@@ -265,15 +285,13 @@ function EnvelopeForm() {
                 />
               ))}
             </SimpleGrid>
-            {preview !== null && parseRef(questions[preview] ?? "") && (
-              <MushafPage key={questions[preview]} start={parseRef(questions[preview]!)!} maxH="50vh" />
-            )}
+            {previewed && <MushafPage key={questions[preview!]} start={previewed.start} end={previewed.end} maxH="50vh" />}
             <Flex gap="3" align="center" wrap="wrap">
-              <Button variant="outline" colorPalette="brand" onClick={() => setQuestions(QUESTION_JUZ.map((_, i) => refText(randomRef(i))))}>
+              <Button variant="outline" colorPalette="brand" onClick={() => setQuestions(QUESTION_JUZ.map((_, i) => questionText(randomQuestion(i, round))))}>
                 <Dices size={16} aria-hidden />
                 {tx("Pick all 3 at random")}
               </Button>
-              <Button type="submit" colorPalette="brand" loading={loading} disabled={questions.some((q) => !parseRef(q))}>
+              <Button type="submit" colorPalette="brand" loading={loading} disabled={questions.some((q) => !parseQuestion(q))}>
                 {tx("Save the questions")}
               </Button>
               {saved && (
@@ -324,6 +342,7 @@ const MAX_RANDOM = 200;
 // avoids giving the same page twice for the same question).
 function RandomEnvelopesCard() {
   const [count, setCount] = useState("10");
+  const [round, setRound] = useRoundChoice();
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ from: number; to: number } | null>(null);
   const [create, { loading }] = useMutation(CREATE_RANDOM_ENVELOPES, { refetchQueries: [{ query: ENVELOPES }] });
@@ -336,9 +355,13 @@ function RandomEnvelopesCard() {
     if (!valid) return;
     setError(null);
     setMade(null);
-    if (!(await confirmDialog({ message: tx("Create {n} envelopes with random questions?", { n }), confirmLabel: tx("Create") }))) return;
+    const message =
+      round === "FINAL"
+        ? tx("Create {n} final envelopes with random questions (half a page each)?", { n })
+        : tx("Create {n} tasfia envelopes with random questions (one page each)?", { n });
+    if (!(await confirmDialog({ message, confirmLabel: tx("Create") }))) return;
     try {
-      const res = await create({ variables: { count: n } });
+      const res = await create({ variables: { count: n, round } });
       const list = res.data?.createRandomEnvelopes ?? [];
       if (list.length) setMade({ from: list[0]!.number, to: list[list.length - 1]!.number });
     } catch (err) {
@@ -360,10 +383,11 @@ function RandomEnvelopesCard() {
                   {tx("Create many envelopes at random")}
                 </Heading>
                 <Text fontSize="sm" color="fg.muted">
-                  {tx("Each envelope gets 3 random ayahs: juz 1–10, juz 11–20 and juz 21–30. Pages already used are avoided.")}
+                  {tx("Each envelope gets 3 random starts: juz 1–10, juz 11–20 and juz 21–30. Each question ends one page on (tasfia) or half a page on (final). Pages already used are avoided.")}
                 </Text>
               </Box>
             </Flex>
+            <RoundChoice value={round} onChange={setRound} />
             <ErrorAlert message={error} />
             <Flex gap="3" align="flex-end" wrap="wrap">
               <Box>
@@ -420,7 +444,10 @@ function EnvelopeCard({ envelope: e, canEdit, onEdit }: { envelope: Envelope; ca
   return (
     <Stack gap="2.5">
       <EnvelopeFace used={e.used} />
-      <Flex justify="flex-end" align="center" gap="2" minH="8">
+      <Flex justify="space-between" align="center" gap="2" minH="8">
+        <Badge variant="outline" colorPalette={e.round === "FINAL" ? "orange" : "teal"}>
+          {e.round === "FINAL" ? tx("Final") : tx("Tasfia")}
+        </Badge>
         {e.used ? (
           <Badge variant="subtle" colorPalette="gray">
             {tx("Used")}

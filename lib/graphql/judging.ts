@@ -1,5 +1,9 @@
+import type { MarkDifference } from "@/lib/errors";
 import { gql, type TypedDocumentNode } from "@apollo/client";
+import type { Round } from "@/lib/quran";
 import type { ParticipantDetail } from "./participants";
+
+export type { Round };
 
 // The paper "ALAMA" sheet: numbers come from the server so screens and results always agree.
 export interface ScoringRules {
@@ -36,12 +40,15 @@ export interface JudgeSheet {
   submitted: boolean;
   submittedAt: string | null;
   updatedAt: string;
+  // Admin and staff: where this submitted sheet's Fath, Tanbih or Kusita differs from the others.
+  differs?: MarkDifference[];
 }
 
 export interface Envelope {
   id: string;
   number: number;
-  questions: string[];
+  round: Round; // TASFIA: one page a question; FINAL: half a page
+  questions: string[]; // "surah:ayah-surah:ayah" (an older one: "surah:ayah", one page)
   used: boolean;
   usedBy: { id: string; fullName: string } | null;
   usedAt: string | null;
@@ -80,6 +87,7 @@ const ENVELOPE_FIELDS = gql`
   fragment EnvelopeFields on Envelope {
     id
     number
+    round
     questions
     used
     usedBy {
@@ -113,6 +121,8 @@ const JUDGING_PARTICIPANT_FIELDS = gql`
     photoUrl
     score
     status
+    inFinal
+    finalScore
     sheetsSubmitted
     registeredAt
     guardianName
@@ -128,6 +138,13 @@ const JUDGING_PARTICIPANT_FIELDS = gql`
     }
     mySheet {
       ...JudgeSheetFields
+      # Where the judge's Fath, Tanbih or Kusita count differs from the judges who finished the same
+      # questions: updates live, also after this judge already moved on.
+      differs {
+        question
+        mark
+        count
+      }
     }
   }
   ${ENVELOPE_FIELDS}
@@ -150,16 +167,42 @@ export const SCORING_RULES: TypedDocumentNode<{ scoringRules: ScoringRules }> = 
   }
 `;
 
-export const STAGE: TypedDocumentNode<{ stage: { participant: StageParticipant | null; updatedAt: string } }> = gql`
+// The participant's envelope, sheets and sheet count are those of the round on stage (`round`):
+// the tasfia, then the final once the admin starts it.
+export const STAGE: TypedDocumentNode<{
+  stage: { participant: StageParticipant | null; updatedAt: string; round: Round; finished: boolean };
+}> = gql`
   query Stage {
     stage {
       participant {
         ...JudgingParticipantFields
       }
       updatedAt
+      round
+      finished
     }
   }
   ${JUDGING_PARTICIPANT_FIELDS}
+`;
+
+// Admin only. The tasfia is over: the finalists are fixed and the stage moves to the final.
+export const START_FINAL: TypedDocumentNode<{ startFinal: { round: Round } }, Record<string, never>> = gql`
+  mutation StartFinal {
+    startFinal {
+      round
+      updatedAt
+    }
+  }
+`;
+
+// Admin only. Back to the tasfia, before any finalist drew a final envelope.
+export const CANCEL_FINAL: TypedDocumentNode<{ cancelFinal: { round: Round } }, Record<string, never>> = gql`
+  mutation CancelFinal {
+    cancelFinal {
+      round
+      updatedAt
+    }
+  }
 `;
 
 export const JUDGING_PARTICIPANT: TypedDocumentNode<{ participant: StageParticipant | null }, { id: string }> = gql`
@@ -171,19 +214,26 @@ export const JUDGING_PARTICIPANT: TypedDocumentNode<{ participant: StageParticip
   ${JUDGING_PARTICIPANT_FIELDS}
 `;
 
+// One round's envelope and sheets; no round: the round on stage now.
 export const PARTICIPANT_SHEETS: TypedDocumentNode<
   { participant: { id: string; envelope: Envelope | null; sheetsSubmitted: number; sheets: JudgeSheet[] } | null },
-  { id: string }
+  { id: string; round?: Round }
 > = gql`
-  query ParticipantSheets($id: ID!) {
+  query ParticipantSheets($id: ID!, $round: EnvelopeRound) {
     participant(id: $id) {
       id
-      sheetsSubmitted
-      envelope {
+      sheetsSubmitted(round: $round)
+      envelope(round: $round) {
         ...EnvelopeFields
       }
-      sheets {
+      sheets(round: $round) {
         ...JudgeSheetFields
+        # Where a count everyone hears differs from the judges who finished the same questions.
+        differs {
+          question
+          mark
+          count
+        }
       }
     }
   }
@@ -191,9 +241,32 @@ export const PARTICIPANT_SHEETS: TypedDocumentNode<
   ${SHEET_FIELDS}
 `;
 
+// Judges: "Done" on a question. Saves the draft; refused with MARKS_DIFFER while a Fath, Tanbih or
+// Kusita count up to that question differs from the judges who finished it too.
+export const FINISH_QUESTION: TypedDocumentNode<
+  { finishQuestion: { id: string } },
+  { input: { participantId: string; questions: Marks[]; sauti: number | null; question: number; round?: Round } }
+> = gql`
+  mutation FinishQuestion($input: FinishQuestionInput!) {
+    finishQuestion(input: $input) {
+      id
+    }
+  }
+`;
+
+// Admin only: a submitted sheet goes back to its judge as a draft (to correct a miscount).
+export const REOPEN_SHEET: TypedDocumentNode<{ reopenSheet: { id: string; submitted: boolean } }, { id: string }> = gql`
+  mutation ReopenSheet($id: ID!) {
+    reopenSheet(sheetId: $id) {
+      id
+      submitted
+    }
+  }
+`;
+
 export const SAVE_SHEET: TypedDocumentNode<
   { saveSheet: JudgeSheet },
-  { input: { participantId: string; questions: Marks[]; sauti: number | null; presence: boolean | null; submit: boolean } }
+  { input: { participantId: string; questions: Marks[]; sauti: number | null; presence: boolean | null; submit: boolean; round?: Round } }
 > = gql`
   mutation SaveSheet($input: SaveSheetInput!) {
     saveSheet(input: $input) {
@@ -220,27 +293,27 @@ export const ENVELOPE_SLOTS: TypedDocumentNode<{ envelopeSlots: { id: string }[]
   }
 `;
 
-export const CREATE_ENVELOPE: TypedDocumentNode<{ createEnvelope: Envelope }, { questions: string[] }> = gql`
-  mutation CreateEnvelope($questions: [String!]!) {
-    createEnvelope(input: { questions: $questions }) {
+export const CREATE_ENVELOPE: TypedDocumentNode<{ createEnvelope: Envelope }, { questions: string[]; round: Round }> = gql`
+  mutation CreateEnvelope($questions: [String!]!, $round: EnvelopeRound) {
+    createEnvelope(input: { questions: $questions, round: $round }) {
       ...EnvelopeFields
     }
   }
   ${ENVELOPE_FIELDS}
 `;
 
-export const CREATE_RANDOM_ENVELOPES: TypedDocumentNode<{ createRandomEnvelopes: Envelope[] }, { count: number }> = gql`
-  mutation CreateRandomEnvelopes($count: Int!) {
-    createRandomEnvelopes(count: $count) {
+export const CREATE_RANDOM_ENVELOPES: TypedDocumentNode<{ createRandomEnvelopes: Envelope[] }, { count: number; round: Round }> = gql`
+  mutation CreateRandomEnvelopes($count: Int!, $round: EnvelopeRound) {
+    createRandomEnvelopes(count: $count, round: $round) {
       ...EnvelopeFields
     }
   }
   ${ENVELOPE_FIELDS}
 `;
 
-export const UPDATE_ENVELOPE: TypedDocumentNode<{ updateEnvelope: Envelope }, { id: string; questions: string[] }> = gql`
-  mutation UpdateEnvelope($id: ID!, $questions: [String!]!) {
-    updateEnvelope(id: $id, input: { questions: $questions }) {
+export const UPDATE_ENVELOPE: TypedDocumentNode<{ updateEnvelope: Envelope }, { id: string; questions: string[]; round: Round }> = gql`
+  mutation UpdateEnvelope($id: ID!, $questions: [String!]!, $round: EnvelopeRound) {
+    updateEnvelope(id: $id, input: { questions: $questions, round: $round }) {
       ...EnvelopeFields
     }
   }
@@ -301,6 +374,7 @@ export function sheetTotal(questions: Marks[], sauti: number | null, r: ScoringR
 
 export interface QueueParticipant {
   id: string;
+  number: number | null; // N°: the order of passage given by the admin
   fullName: string;
   institution: string;
   commune: string;
@@ -312,8 +386,24 @@ export interface QueueParticipant {
   score: number | null;
   status: "PENDING" | "PASSED" | "FAILED";
   finalist: boolean;
+  inFinal: boolean; // fixed when the admin started the final
+  finalScore: number | null;
+  // These three are about the round on stage (the tasfia, then the final).
   sheetsSubmitted: number;
   envelope: { id: string; number: number } | null;
+  // Judges: their own sheet (null for the others, or before they marked anything).
+  mySheet: { id: string; submitted: boolean } | null;
+}
+
+// The order of passage: by the number the admin gave (N° 1 first); those without a number come
+// after, in the order they registered.
+export function byPassageOrder<T extends { number: number | null; registeredAt: string }>(list: readonly T[]): T[] {
+  return [...list].sort((a, b) => {
+    if (a.number !== null && b.number !== null) return a.number - b.number;
+    if (a.number !== null) return -1;
+    if (b.number !== null) return 1;
+    return a.registeredAt.localeCompare(b.registeredAt);
+  });
 }
 
 // The stage's list: who still has to recite (no envelope yet) and who already did.
@@ -322,6 +412,7 @@ export const STAGE_QUEUE: TypedDocumentNode<{ participants: QueueParticipant[] }
     # Only approved registrations compete (the admin would otherwise see the review queue too).
     participants(review: APPROVED) {
       id
+      number
       fullName
       institution
       commune
@@ -333,10 +424,17 @@ export const STAGE_QUEUE: TypedDocumentNode<{ participants: QueueParticipant[] }
       score
       status
       finalist
+      inFinal
+      finalScore
       sheetsSubmitted
       envelope {
         id
         number
+      }
+      # Judges: whether their own sheet is in (a refused or reopened one waits to be corrected).
+      mySheet {
+        id
+        submitted
       }
     }
   }
@@ -369,24 +467,26 @@ export const REGENERATE_STAGE_SCREEN_LINK: TypedDocumentNode<{ regenerateStageSc
 
 export interface StageScreenView {
   valid: boolean;
+  round: Round;
   participant: { id: string; fullName: string } | null;
-  drawn: boolean;
-  envelopeNumber: number | null;
+  drawn: boolean; // which envelope is never sent to the tablet: the participant must not know it
   slots: { id: string }[];
+  finished: boolean; // everyone has recited, every sheet is in
 }
 
 const STAGE_SCREEN_FIELDS = gql`
   fragment StageScreenFields on StageScreenView {
     valid
+    round
     participant {
       id
       fullName
     }
     drawn
-    envelopeNumber
     slots {
       id
     }
+    finished
   }
 `;
 

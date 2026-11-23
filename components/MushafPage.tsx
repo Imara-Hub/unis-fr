@@ -3,7 +3,7 @@
 import { Box, Button, chakra, Flex, IconButton, Spinner, Text, useBreakpointValue } from "@chakra-ui/react";
 import { BookOpenText, ChevronLeft, ChevronRight, LocateFixed, Maximize2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
-import { juzOf, PAGES, pageOf, surahArabicName, type AyahRef } from "@/lib/quran";
+import { indexOf, juzOf, PAGES, pageOf, surahArabicName, type AyahRef } from "@/lib/quran";
 import { useI18n } from "@/lib/i18n";
 
 // One page of the Madina mushaf (King Fahd Complex print, Hafs, 604 pages of 15 lines), drawn
@@ -31,7 +31,9 @@ const FRAME_BLUE = "#4F7FB0";
 const FRAME_LIGHT = "#DCE8F4";
 // The frame's pattern: small blue lozenges, as the printed border.
 const FRAME_PATTERN = `repeating-linear-gradient(45deg, ${FRAME_BLUE} 0 1.5px, transparent 1.5px 6px), repeating-linear-gradient(-45deg, ${FRAME_BLUE} 0 1.5px, ${FRAME_LIGHT} 1.5px 6px)`;
-const AYAH_MARK = "rgba(226,192,106,0.40)"; // the question's ayah
+const AYAH_MARK = "rgba(226,192,106,0.40)"; // the ayah the question starts from
+const RANGE_MARK = "rgba(226,192,106,0.14)"; // the ayahs recited, start to end
+const END_MARK = "rgba(79,127,176,0.26)"; // the ayah it finishes on
 
 // Turning a page. The mushaf reads right to left: going on, the left page is lifted over to the
 // right, so the new right page falls into place from the spine ("turn-r") while the new left page
@@ -163,10 +165,19 @@ function usePageData(page: number, attempt: number) {
   return { data: mine?.data ?? null, failed: Boolean(mine?.failed) };
 }
 
-// The question's pages as an open mushaf, the ayah it starts from marked in gold. The judge turns
+// The question's pages as an open mushaf, the ayah it starts from marked in gold, the ayahs to
+// recite lightly tinted and the one it finishes on in blue (`end`; none: only the start). The judge turns
 // the pages (the participant may go on) with the arrows at the sides or a swipe, and comes back
 // to the question in one tap. `maxH` is the book's height ("100%" to fill its box).
-export function MushafPage({ start, maxH = "82vh" }: { start: AyahRef; maxH?: string }) {
+// `hug`: as wide as the pages need for this height (not the whole width), so what is beside it
+// gets the rest. Used on the judging desk next to the mark cards.
+// Width ÷ height of the whole viewer (pages, cover and the turning arrows) when it hugs the pages.
+// A little generous: the pages fit the height first, so they never come out smaller than the room allows.
+const HUG_BOOK = 1.42;
+const HUG_PAGE = 0.8;
+const HUG_LARGE = 1;
+
+export function MushafPage({ start, end, maxH = "82vh", hug = false }: { start: AyahRef; end?: AyahRef; maxH?: string; hug?: boolean }) {
   const { tx } = useI18n();
   const home = pageOf(start);
   const [page, setPage] = useState(home); // the page in focus (in a book: one of the two shown)
@@ -259,6 +270,9 @@ export function MushafPage({ start, maxH = "82vh" }: { start: AyahRef; maxH?: st
     <Box
       position="relative"
       h={maxH}
+      // Width from the height: two facing pages, one page, or the larger text (a reading column).
+      aspectRatio={hug ? (book ? HUG_BOOK : view === "large" ? HUG_LARGE : HUG_PAGE) : undefined}
+      maxW="full"
       title={tx("Madina mushaf, King Fahd Complex")}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
@@ -317,14 +331,14 @@ export function MushafPage({ start, maxH = "82vh" }: { start: AyahRef; maxH?: st
           // The open book: the left (even) page and the right (odd) page meet at the spine.
           <Flex h="full" justify="center">
             <Box flex="1" minW="0" h="full">
-              <PrintedPage key={`l${spread.left}`} data={left.data!} start={start} view="page" side="left" cap={cap} onFit={fitLeft} motion={motionLeft} />
+              <PrintedPage key={`l${spread.left}`} data={left.data!} start={start} end={end} view="page" side="left" cap={cap} onFit={fitLeft} motion={motionLeft} />
             </Box>
             <Box flex="1" minW="0" h="full">
-              <PrintedPage key={`r${spread.right}`} data={right.data!} start={start} view="page" side="right" cap={cap} onFit={fitRight} motion={motionRight} />
+              <PrintedPage key={`r${spread.right}`} data={right.data!} start={start} end={end} view="page" side="right" cap={cap} onFit={fitRight} motion={motionRight} />
             </Box>
           </Flex>
         ) : (
-          <PrintedPage key={`${page}-${view}`} data={right.data!} start={start} view={view === "large" ? "large" : "page"} motion={motionSingle} />
+          <PrintedPage key={`${page}-${view}`} data={right.data!} start={start} end={end} view={view === "large" ? "large" : "page"} motion={motionSingle} />
         )}
       </Box>
 
@@ -353,6 +367,7 @@ export function MushafPage({ start, maxH = "82vh" }: { start: AyahRef; maxH?: st
 function PrintedPage({
   data,
   start,
+  end,
   view,
   side,
   cap,
@@ -361,6 +376,7 @@ function PrintedPage({
 }: {
   data: PageData;
   start: AyahRef;
+  end?: AyahRef;
   view: "page" | "large";
   side?: "left" | "right";
   cap?: number; // in a book: the size the facing page needs, so both pages match
@@ -379,6 +395,8 @@ function PrintedPage({
   const firstSurah = data.lines[0]?.[1][0]?.[0] ?? start.surah;
   const juz = juzOfPage(data);
   const scrolled = useRef(false);
+  const from = indexOf(start);
+  const to = end ? Math.max(from, indexOf(end)) : from;
 
   const fit = useCallback(() => {
     const el = box.current;
@@ -552,16 +570,19 @@ function PrintedPage({
                     fontFamily={`${fontFamily(data.page)}, serif`}
                     lineHeight="1"
                   >
-                    {row.words.map(([surah, ayah, glyph, end], k) => {
-                      const marked = surah === start.surah && ayah === start.ayah;
+                    {row.words.map(([surah, ayah, glyph, isEnd], k) => {
+                      const at = indexOf({ surah, ayah });
+                      const marked = at === from;
+                      const last = end !== undefined && at === to && to !== from;
+                      const inside = at >= from && at <= to;
                       return (
                         <chakra.span
                           key={k}
                           data-marked={marked ? "" : undefined}
-                          bg={marked ? AYAH_MARK : undefined}
-                          color={end ? (marked ? "gold.800" : "#2F5A86") : undefined}
+                          bg={marked ? AYAH_MARK : last ? END_MARK : inside ? RANGE_MARK : undefined}
+                          color={isEnd ? (marked ? "gold.800" : last ? "#1F4E7A" : "#2F5A86") : undefined}
                           py="0.12em"
-                          aria-label={end ? `${surah}:${ayah}` : undefined}
+                          aria-label={isEnd ? `${surah}:${ayah}` : undefined}
                         >
                           {glyph}
                         </chakra.span>

@@ -19,6 +19,17 @@ const extendSlots = (name: string, recipe: object) => ({
 // only for lines and marks, cool paper white. Red is kept for "failed" and errors.
 const config = defineConfig({
   theme: {
+    // The stage screen's envelope pages slide in from the side of the button that was pressed.
+    keyframes: {
+      "page-from-right": {
+        from: { opacity: "0", transform: "translateX(18%)" },
+        to: { opacity: "1", transform: "translateX(0)" },
+      },
+      "page-from-left": {
+        from: { opacity: "0", transform: "translateX(-18%)" },
+        to: { opacity: "1", transform: "translateX(0)" },
+      },
+    },
     tokens: {
       colors: {
         brand: {
@@ -35,17 +46,17 @@ const config = defineConfig({
           950: { value: "#10163A" },
         },
         gold: {
-          50: { value: "#FBF5E6" },
-          100: { value: "#F4E6C2" },
-          200: { value: "#E9CF8C" },
-          300: { value: "#DDB65A" },
-          400: { value: "#C99A35" },
-          500: { value: "#B3832A" },
-          600: { value: "#946A22" },
-          700: { value: "#73521C" },
-          800: { value: "#553D16" },
-          900: { value: "#3A2A10" },
-          950: { value: "#21180A" },
+          50: { value: "#FFF6EB" },
+          100: { value: "#FEE8CC" },
+          200: { value: "#FDD199" },
+          300: { value: "#FBB75E" },
+          400: { value: "#F9971D" },
+          500: { value: "#E07F0A" },
+          600: { value: "#B96508" },
+          700: { value: "#924F0B" },
+          800: { value: "#6E3C0C" },
+          900: { value: "#4A2909" },
+          950: { value: "#2B1805" },
         },
       },
       // A little bigger than Chakra's defaults (16px base → 17px): Source Sans is drawn smaller than
@@ -182,7 +193,7 @@ const config = defineConfig({
       backgroundImage: [
         "radial-gradient(60rem 40rem at 100% -10%, rgba(58,76,140,0.22), transparent 60%)",
         "radial-gradient(50rem 35rem at -10% 10%, rgba(26,35,78,0.14), transparent 60%)",
-        "radial-gradient(45rem 30rem at 80% 110%, rgba(201,154,53,0.16), transparent 60%)",
+        "radial-gradient(45rem 30rem at 80% 110%, rgba(249,151,29,0.16), transparent 60%)",
       ].join(", "),
       backgroundAttachment: "fixed",
     },

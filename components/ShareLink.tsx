@@ -2,8 +2,9 @@
 
 import { Alert, Box, Button, Flex, QrCode, Stack } from "@chakra-ui/react";
 import type { ReactNode } from "react";
-import { Copy, MessageCircle } from "lucide-react";
+import { Copy } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
+import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 import { useI18n } from "@/lib/i18n";
 
 // Is this a link only this computer can open? Then phones that receive it will fail.
@@ -75,7 +76,7 @@ export function ShareLink({ url, message, qr = false }: { url: string; message: 
 }
 
 // Explains why a localhost link will not work on phones, and how to fix it.
-function LocalLinkWarning(): ReactNode {
+export function LocalLinkWarning(): ReactNode {
   const { tx } = useI18n();
   return (
     <Alert.Root status="warning">
@@ -90,10 +91,6 @@ function LocalLinkWarning(): ReactNode {
   );
 }
 
-// Icons (lucide)
 function CopyIcon() {
   return <Copy size={16} aria-hidden />;
-}
-function WhatsAppIcon() {
-  return <MessageCircle size={16} aria-hidden />;
 }

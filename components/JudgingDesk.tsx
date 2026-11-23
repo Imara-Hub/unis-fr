@@ -1,11 +1,14 @@
 "use client";
 
 import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
-import { Box, Button, Card, chakra, Circle, CloseButton, Dialog, Flex, Heading, IconButton, Link, Portal, SimpleGrid, Spinner, Stack, Text } from "@chakra-ui/react";
-import { ArrowLeft, BookOpen, Cake, CircleCheck, CloudOff, GraduationCap, Mail, Lock, MapPin, Mic, MonitorSmartphone, Pencil, TriangleAlert, Undo2, User, UserRoundCheck } from "lucide-react";
+import { Badge, Box, Button, Card, chakra, Circle, CloseButton, Dialog, Flex, Heading, IconButton, Link, Portal, SimpleGrid, Spinner, Stack, Text } from "@chakra-ui/react";
+import { ArrowLeft, BookOpen, Cake, Check, ChevronRight, CircleCheck, CircleX, Download, Trophy, CloudOff, Crown, GraduationCap, Mail, Lock, MapPin, Mic, MonitorSmartphone, Pencil, TriangleAlert, Undo2, User, UserRoundCheck } from "lucide-react";
 import NextLink from "next/link";
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { confirmDialog } from "@/components/ConfirmDialog";
+import { ExportResultsButton } from "@/components/ExportResultsButton";
+import { FinalResults } from "@/components/FinalResults";
+import { rankParticipants, ResultSections } from "@/components/RankingTable";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { toaster } from "@/components/Toaster";
 import { ageOf, NAVY_GRADIENT, ParticipantInfo, RulesCard } from "@/components/JudgingParts";
@@ -13,7 +16,7 @@ import { StarLattice } from "@/components/brand/Octagram";
 import { MushafPage, preloadPages } from "@/components/MushafPage";
 import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { questionInfo, questionLabel } from "@/lib/quran/label";
-import { readApiError } from "@/lib/errors";
+import { readApiError, type MarkDifference } from "@/lib/errors";
 import { ME } from "@/lib/graphql/auth";
 import { isFinalAnswer, openSheets, readSheet, removeSheet, sheetKey, waitingSheets, writeSheet } from "@/lib/sheetOutbox";
 import { EMPTY_MARKS, hasMarks, MARK_TYPES, marksOnly, SAUTI, type MarkKind, type MarkType } from "@/lib/marks";
@@ -23,15 +26,18 @@ import {
   DRAW_ENVELOPE,
   ENVELOPE_SLOTS,
   ENVELOPES,
+  FINISH_QUESTION,
   JUDGING_PARTICIPANT,
   SAVE_SHEET,
   SCORING_RULES,
   STAGE,
   STAGE_QUEUE,
+  byPassageOrder,
   questionScore,
   sheetTotal,
   type Marks,
   type QueueParticipant,
+  type Round,
   type ScoringRules,
   type StageParticipant,
 } from "@/lib/graphql/judging";
@@ -42,8 +48,15 @@ import { useI18n } from "@/lib/i18n";
 // The judge's desk, the whole competition on one screen:
 // 1. call the next participant, 2. hand them the tablet to pick an envelope, 3. listen and mark
 // your own sheet, 4. call the next one. Every judge's screen follows the same stage live.
+// With a chief judge, only they call participants (and send them back or end a turn); the other
+// judges see who will. No chief judge: every judge may call.
+const CallRights = createContext<{ canCall: boolean; chief: string | null }>({ canCall: true, chief: null });
+// The round on stage: every sheet opened on the desk belongs to it.
+const StageRound = createContext<Round>("TASFIA");
+
 export function JudgingDesk() {
   const stage = useQuery(STAGE);
+  const me = useQuery(ME);
   const rules = useQuery(SCORING_RULES);
   const queue = useQuery(STAGE_QUEUE);
   const envelopes = useQuery(ENVELOPES);
@@ -54,11 +67,23 @@ export function JudgingDesk() {
   const outbox = useSheetOutbox(stage.data ? [stage.data.stage.participant?.id ?? null, viewId] : null);
 
   const onStage = stage.data?.stage.participant ?? null;
+  // The tasfia, then the final once the admin starts it: only the finalists, only final envelopes.
+  const round = stage.data?.stage.round ?? "TASFIA";
+  const final = round === "FINAL";
   const judgeCount = counts.data?.settings.judgeCount ?? 4;
-  const all = useMemo(() => [...(queue.data?.participants ?? [])].sort((a, b) => a.registeredAt.localeCompare(b.registeredAt)), [queue.data]);
+  const chiefId = counts.data?.settings.chiefJudgeId ?? null;
+  const rights = useMemo(
+    () => ({ canCall: !chiefId || chiefId === me.data?.me?.id, chief: counts.data?.settings.chiefJudgeName ?? null }),
+    [chiefId, me.data, counts.data],
+  );
+  // The order of passage: the admin's numbers (N° 1 first), the unnumbered after by registration.
+  const all = useMemo(
+    () => byPassageOrder((queue.data?.participants ?? []).filter((p) => round === "TASFIA" || p.inFinal)),
+    [queue.data, round],
+  );
   const waiting = all.filter((p) => !p.envelope && p.id !== onStage?.id);
   const recited = all.filter((p) => p.envelope && p.id !== onStage?.id);
-  const sealed = envelopes.data ? envelopes.data.envelopes.filter((e) => !e.used).length : undefined;
+  const sealed = envelopes.data ? envelopes.data.envelopes.filter((e) => !e.used && e.round === round).length : undefined;
 
   const error = stage.error ?? rules.error ?? queue.error;
   // A failed reload keeps what was loaded: the open sheet (and its unsaved taps) must never be
@@ -67,16 +92,30 @@ export function JudgingDesk() {
   const r = rules.data.scoringRules;
 
   const correcting = viewId && viewId !== onStage?.id;
-  const reciting = !correcting && Boolean(onStage?.envelope); // only the sheet on screen
+  // Everyone has recited and the last one on stage has every judge's sheet: the competition is
+  // over. The desk then shows the results instead of the last participant's sheet (they stay
+  // "on stage" until someone is called, which nobody will be).
+  const finished =
+    queue.data !== undefined &&
+    counts.data !== undefined && // the panel size, not a guess
+    all.length > 0 &&
+    waiting.length === 0 &&
+    // A turn ended "anyway" before every judge submitted leaves that participant without a final
+    // score: not finished until they are called back and every sheet is in.
+    recited.every((p) => p.sheetsSubmitted >= judgeCount) &&
+    (!onStage || (Boolean(onStage.envelope) && onStage.sheetsSubmitted >= judgeCount));
+  const reciting = !correcting && !finished && Boolean(onStage?.envelope); // only the sheet on screen
 
   return (
+    <CallRights.Provider value={rights}>
+    <StageRound.Provider value={round}>
     <Stack gap={{ base: "5", md: "6" }}>
       <ErrorAlert message={error ? readApiError(error).message : null} />
       {outbox > 0 && (
         <OfflineNotice>{tx("{n} sheet(s) kept on this tablet, sent by themselves when the connection returns.", { n: outbox })}</OfflineNotice>
       )}
       {/* The header only between participants: once someone recites, the judge sees just the sheet. */}
-      {reciting ? null : onStage && !correcting ? (
+      {reciting ? null : onStage && !correcting && !finished ? (
         <Flex justify="flex-end">
           <Button size="sm" variant="outline" colorPalette="brand" onClick={() => setShowRules((v) => !v)}>
             <BookOpen size={15} aria-hidden />
@@ -92,15 +131,20 @@ export function JudgingDesk() {
           ]}
           showRules={showRules}
           onRules={() => setShowRules((v) => !v)}
+          final={final}
         />
       )}
       {showRules && !reciting && <RulesCard rules={r} />}
       {reciting && <RulesDialog open={showRules} rules={r} onClose={() => setShowRules(false)} />}
 
-      {sealed === 0 && !onStage?.envelope && <NoEnvelopes />}
+      {sealed === 0 && !onStage?.envelope && !finished && <NoEnvelopes final={final} />}
 
       {correcting ? (
         <PastSheet id={viewId} rules={r} onBack={() => setViewId(null)} />
+      ) : finished && final ? (
+        <FinalDone participants={all} maxScore={counts.data?.settings.maxScore ?? 100} />
+      ) : finished ? (
+        <CompetitionDone participants={all} settings={counts.data?.settings ?? null} />
       ) : !onStage ? (
         <CallNext waiting={waiting} loading={queue.loading && !queue.data} />
       ) : !onStage.envelope ? (
@@ -117,12 +161,152 @@ export function JudgingDesk() {
         />
       )}
 
-      {!reciting && <Recited recited={recited} viewId={viewId} onOpen={setViewId} judgeCount={judgeCount} />}
+      {!reciting && (
+        <Recited
+          // Finished: the last participant (still "on stage") is with the others, to look back at.
+          recited={finished && onStage ? all.filter((p) => p.envelope) : recited}
+          viewId={viewId}
+          onOpen={setViewId}
+          judgeCount={judgeCount}
+          final={final}
+        />
+      )}
+    </Stack>
+    </StageRound.Provider>
+    </CallRights.Provider>
+  );
+}
+
+// For the judges who do not call: who calls the participants.
+function ChiefCalls({ dark = false }: { dark?: boolean }) {
+  const { chief } = useContext(CallRights);
+  const { tx } = useI18n();
+  return (
+    <Flex
+      align="center"
+      gap="2"
+      px="3.5"
+      py="2"
+      rounded="xl"
+      bg={dark ? "whiteAlpha.100" : "gold.50"}
+      borderWidth="1px"
+      borderColor={dark ? "gold.400/50" : "gold.200"}
+      color={dark ? "gold.200" : "gold.800"}
+      fontSize="sm"
+      fontWeight="medium"
+    >
+      <Crown size={16} aria-hidden />
+      <Text>{chief ? tx("{name}, the chief judge, calls the participants.", { name: chief }) : tx("The chief judge calls the participants.")}</Text>
+    </Flex>
+  );
+}
+
+// Every participant has recited and every panel is complete: the final results, best first,
+// as on the Ranking page. The judge's own sheets stay below (Recited) to look back at.
+function CompetitionDone({
+  participants,
+  settings,
+}: {
+  participants: QueueParticipant[];
+  settings: { passMark: number; maxScore: number; finalistCount: number } | null;
+}) {
+  const { tx } = useI18n();
+  const maxScore = settings?.maxScore ?? 100;
+  const rows = rankParticipants(participants);
+  const passed = rows.filter((r) => r.p.status === "PASSED");
+  const failed = rows.filter((r) => r.p.status !== "PASSED");
+  // Only the best of those who passed go to the final (the server picks them: the top
+  // `finalistCount`, ties by name).
+  const finalists = passed.filter((r) => r.p.finalist);
+  const hasFinal = (settings?.finalistCount ?? 0) > 0;
+
+  return (
+    <Stack gap={{ base: "5", md: "6" }}>
+      <Box position="relative" overflow="hidden" rounded="2xl" bg={NAVY_GRADIENT} color="white" px={{ base: "5", md: "7" }} py={{ base: "5", md: "6" }}>
+        <Box position="absolute" insetY="0" right="0" w={{ base: "full", md: "50%" }} aria-hidden>
+          <StarLattice color="#F9971D" opacity={0.18} />
+        </Box>
+        <Flex position="relative" align="center" gap="4" wrap="wrap">
+          <Circle size="14" flexShrink={0} bg="linear-gradient(160deg, #FDD199 0%, #F9971D 100%)" color="brand.900" boxShadow="0 0 36px rgba(251,183,94,0.4)">
+            <Trophy size={26} aria-hidden />
+          </Circle>
+          <Box flex="1" minW="0">
+            <Heading fontFamily="display" fontSize={{ base: "2xl", md: "3xl" }} lineHeight="1.15">
+              {tx("The competition is finished")}
+            </Heading>
+            <Text color="whiteAlpha.800" fontSize="sm" mt="1">
+              {tx("Every participant has recited and every judge has submitted. Here are the final results.")}
+            </Text>
+          </Box>
+          <ExportResultsButton file="ranking" colorPalette="gold" color="brand.900" disabled={rows.length === 0}>
+            <Download size={16} aria-hidden />
+            {tx("Ranking PDF")}
+          </ExportResultsButton>
+        </Flex>
+        <Flex position="relative" gap={{ base: "5", md: "8" }} mt="5" wrap="wrap">
+          {[
+            { label: tx("Judged"), value: rows.length },
+            ...(hasFinal ? [{ label: tx("Go to the final"), value: finalists.length }] : []),
+            { label: tx("Passed"), value: passed.length },
+            { label: tx("Did not pass"), value: failed.length },
+            ...(settings ? [{ label: tx("Pass mark"), value: `${settings.passMark} / ${maxScore}` }] : []),
+          ].map((s) => (
+            <Box key={s.label}>
+              <Text fontSize="2xl" fontWeight="bold" lineHeight="1" fontVariantNumeric="tabular-nums">
+                {s.value}
+              </Text>
+              <Text fontSize="xs" color="whiteAlpha.700" mt="1">
+                {s.label}
+              </Text>
+            </Box>
+          ))}
+        </Flex>
+      </Box>
+
+      <ResultSections rows={rows} maxScore={maxScore} finalistCount={settings?.finalistCount ?? 0} />
     </Stack>
   );
 }
 
-function DeskHeader({ stats, showRules, onRules }: { stats: { label: string; value: number | string }[]; showRules: boolean; onRules: () => void }) {
+// Every finalist has recited and every panel is complete: the final's ranking, the winner first.
+function FinalDone({ participants, maxScore }: { participants: QueueParticipant[]; maxScore: number }) {
+  const { tx } = useI18n();
+  return (
+    <Stack gap={{ base: "5", md: "6" }}>
+      <Box position="relative" overflow="hidden" rounded="2xl" bg={NAVY_GRADIENT} color="white" px={{ base: "5", md: "7" }} py={{ base: "5", md: "6" }}>
+        <Box position="absolute" insetY="0" right="0" w={{ base: "full", md: "50%" }} aria-hidden>
+          <StarLattice color="#F9971D" opacity={0.18} />
+        </Box>
+        <Flex position="relative" align="center" gap="4" wrap="wrap">
+          <Circle size="14" flexShrink={0} bg="linear-gradient(160deg, #FDD199 0%, #F9971D 100%)" color="brand.900" boxShadow="0 0 36px rgba(251,183,94,0.4)">
+            <Trophy size={26} aria-hidden />
+          </Circle>
+          <Box flex="1" minW="0">
+            <Heading fontFamily="display" fontSize={{ base: "2xl", md: "3xl" }} lineHeight="1.15">
+              {tx("The final is finished")}
+            </Heading>
+            <Text color="whiteAlpha.800" fontSize="sm" mt="1">
+              {tx("Every finalist has recited and every judge's sheet is in. Here is the final ranking.")}
+            </Text>
+          </Box>
+        </Flex>
+      </Box>
+      <FinalResults participants={participants} maxScore={maxScore} />
+    </Stack>
+  );
+}
+
+function DeskHeader({
+  stats,
+  showRules,
+  onRules,
+  final = false,
+}: {
+  stats: { label: string; value: number | string }[];
+  showRules: boolean;
+  onRules: () => void;
+  final?: boolean;
+}) {
   const { tx } = useI18n();
   return (
     <Box rounded="2xl" bg={NAVY_GRADIENT} color="white" px={{ base: "5", md: "7" }} py={{ base: "5", md: "6" }}>
@@ -131,9 +315,14 @@ function DeskHeader({ stats, showRules, onRules }: { stats: { label: string; val
           <Text fontSize="xs" fontWeight="semibold" letterSpacing="0.18em" textTransform="uppercase" color="gold.300">
             {tx("Judging desk")}
           </Text>
-          <Heading fontFamily="display" fontSize={{ base: "2xl", md: "3xl" }}>
-            Musabaqa
-          </Heading>
+          <Flex align="center" gap="3" wrap="wrap">
+            <Heading fontFamily="display" fontSize={{ base: "2xl", md: "3xl" }}>
+              Musabaqa
+            </Heading>
+            <Badge colorPalette={final ? "orange" : "teal"} variant="solid" size="md">
+              {final ? tx("Final") : tx("Tasfia")}
+            </Badge>
+          </Flex>
         </Box>
         <Button size="sm" variant="outline" color="white" borderColor="whiteAlpha.500" _hover={{ bg: "whiteAlpha.200" }} onClick={onRules}>
           <BookOpen size={15} aria-hidden />
@@ -157,7 +346,7 @@ function DeskHeader({ stats, showRules, onRules }: { stats: { label: string; val
   );
 }
 
-function NoEnvelopes() {
+function NoEnvelopes({ final = false }: { final?: boolean }) {
   const { tx } = useI18n();
   return (
     <Flex gap="3" align="center" p="4" rounded="xl" bg="orange.50" borderWidth="1px" borderColor="orange.200" wrap="wrap">
@@ -165,7 +354,10 @@ function NoEnvelopes() {
         <TriangleAlert size={20} aria-hidden />
       </Box>
       <Text flex="1" minW="48" color="orange.900" fontSize="sm">
-        <b>{tx("No envelope is ready.")}</b> {tx("Ask the admin to prepare the envelopes (3 questions each) before calling a participant.")}
+        <b>{final ? tx("No final envelope is ready.") : tx("No envelope is ready.")}</b>{" "}
+        {final
+          ? tx("Ask the admin to prepare the final envelopes (3 questions, half a page each) before calling a finalist.")
+          : tx("Ask the admin to prepare the envelopes (3 questions each) before calling a participant.")}
       </Text>
     </Flex>
   );
@@ -174,16 +366,30 @@ function NoEnvelopes() {
 // Step 1: nobody on stage. The next in line is shown big; anyone in the list can be called.
 function CallNext({ waiting, loading }: { waiting: QueueParticipant[]; loading: boolean }) {
   const [call, { loading: calling }] = useMutation(CALL_PARTICIPANT, {
-    refetchQueries: [{ query: STAGE }],
+    refetchQueries: [{ query: STAGE }, { query: STAGE_QUEUE }],
   });
   const [callingId, setCallingId] = useState<string | null>(null); // only that button spins
   const [error, setError] = useState<string | null>(null);
   const { tx } = useI18n();
-  // In registration order: the first one waiting is called next, automatically.
+  const { canCall } = useContext(CallRights);
+  // In the order of passage (the admin's numbers): the first one waiting is called next.
+  // If they are not here, the judge calls someone further down; the absent one stays on this
+  // list and can be called when they arrive.
   const next = waiting[0];
   const after = waiting[1];
+  const rest = waiting.slice(1);
 
-  async function onCall(id: string) {
+  async function onCall(id: string, opts?: { skipName?: string }) {
+    if (opts?.skipName) {
+      const ok = await confirmDialog({
+        message: tx("{absent} has not arrived. Call {name} now? {absent} stays on the waiting list and can recite later.", {
+          absent: opts.skipName,
+          name: waiting.find((p) => p.id === id)?.fullName ?? "",
+        }),
+        confirmLabel: tx("Call to the stage"),
+      });
+      if (!ok) return;
+    }
     setError(null);
     setCallingId(id);
     try {
@@ -228,7 +434,7 @@ function CallNext({ waiting, loading }: { waiting: QueueParticipant[]; loading: 
       {/* The one to call now */}
       <Box position="relative" overflow="hidden" rounded="2xl" bg={NAVY_GRADIENT} color="white" boxShadow="0 18px 40px rgba(26,35,78,0.28)">
         <Box position="absolute" insetY="0" right="0" w={{ base: "full", md: "55%" }} aria-hidden>
-          <StarLattice color="#C99A35" opacity={0.22} />
+          <StarLattice color="#F9971D" opacity={0.22} />
           <Box position="absolute" inset="0" bg="linear-gradient(to right, #1A234E 0%, rgba(26,35,78,0.55) 50%, rgba(26,35,78,0.1) 100%)" />
         </Box>
         <Box position="absolute" inset="2.5" rounded="xl" borderWidth="1px" borderColor="gold.400/40" pointerEvents="none" />
@@ -243,7 +449,7 @@ function CallNext({ waiting, loading }: { waiting: QueueParticipant[]; loading: 
           textAlign={{ base: "center", md: "left" }}
         >
           {/* Photo in a gold frame */}
-          <Box p="1.5" rounded="xl" bg="linear-gradient(160deg, #F3DB98, #C99A35)" boxShadow="0 10px 24px rgba(0,0,0,0.35)" flexShrink={0}>
+          <Box p="1.5" rounded="xl" bg="linear-gradient(160deg, #FDD199, #F9971D)" boxShadow="0 10px 24px rgba(0,0,0,0.35)" flexShrink={0}>
             <ParticipantPhoto path={next.photoUrl} size="large" />
           </Box>
 
@@ -255,57 +461,119 @@ function CallNext({ waiting, loading }: { waiting: QueueParticipant[]; loading: 
               </Text>
             </Flex>
             <Heading as="h1" fontFamily="display" fontSize={{ base: "3xl", md: "5xl" }} lineHeight="1.05" letterSpacing="-0.01em">
+              {next.number !== null && (
+                <Text as="span" color="gold.300" fontFamily="body" fontWeight="semibold" fontSize={{ base: "xl", md: "2xl" }} me="3" verticalAlign="middle">
+                  N° {next.number}
+                </Text>
+              )}
               {next.fullName}
             </Heading>
             <Flex gap="2" wrap="wrap" justify={{ base: "center", md: "flex-start" }}>
               {facts.map(({ icon: Icon, text }) => (
                 <Flex key={text} align="center" gap="1.5" px="3" py="1.5" rounded="full" bg="whiteAlpha.100" borderWidth="1px" borderColor="whiteAlpha.200" fontSize="sm">
-                  <Icon size={14} color="#E2C06A" aria-hidden />
+                  <Icon size={14} color="#FBB75E" aria-hidden />
                   <Text>{text}</Text>
                 </Flex>
               ))}
             </Flex>
-            <Button
-              mt="2"
-              size="xl"
-              px="8"
-              rounded="xl"
-              bg="gold.400"
-              color="brand.900"
-              fontWeight="bold"
-              boxShadow="0 8px 22px rgba(201,154,53,0.45)"
-              _hover={{ bg: "gold.300", transform: "translateY(-1px)" }}
-              transition="all 0.15s"
-              loading={calling && callingId === next.id}
-              disabled={calling}
-              onClick={() => onCall(next.id)}
-              w={{ base: "full", sm: "auto" }}
-            >
-              <UserRoundCheck size={20} aria-hidden />
-              {tx("Call to the stage")}
-            </Button>
+            {!canCall ? (
+              <Box mt="2">
+                <ChiefCalls dark />
+              </Box>
+            ) : (
+            <Flex gap="3" wrap="wrap" justify={{ base: "center", md: "flex-start" }} w="full">
+              <Button
+                mt="2"
+                size="xl"
+                px="8"
+                rounded="xl"
+                bg="gold.400"
+                color="brand.900"
+                fontWeight="bold"
+                boxShadow="0 8px 22px rgba(249,151,29,0.45)"
+                _hover={{ bg: "gold.300", transform: "translateY(-1px)" }}
+                transition="all 0.15s"
+                loading={calling && callingId === next.id}
+                disabled={calling}
+                onClick={() => void onCall(next.id)}
+                w={{ base: "full", sm: "auto" }}
+              >
+                <UserRoundCheck size={20} aria-hidden />
+                {tx("Call to the stage")}
+              </Button>
+              {after && (
+                <Button
+                  mt="2"
+                  size="xl"
+                  px="6"
+                  rounded="xl"
+                  variant="outline"
+                  borderColor="whiteAlpha.600"
+                  color="white"
+                  _hover={{ bg: "whiteAlpha.200" }}
+                  loading={calling && callingId === after.id}
+                  disabled={calling}
+                  onClick={() => void onCall(after.id, { skipName: next.fullName })}
+                  w={{ base: "full", sm: "auto" }}
+                >
+                  {tx("Not arrived — call next")}
+                </Button>
+              )}
+            </Flex>
+            )}
           </Stack>
         </Flex>
       </Box>
       <ErrorAlert message={error} />
 
-      {/* Who comes after. If the one in line is not here, the next one can go first:
-          the absent one stays first in line for the following turn. */}
-      {after && (
-        <Flex align="center" gap="3" wrap="wrap" p="3" pe="4" rounded="xl" bg="white" borderWidth="1px">
-          <ParticipantPhoto path={after.photoUrl} size="thumb" />
-          <Box flex="1" minW="40">
-            <Text fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="0.1em">
-              {tx("Then:")}
-            </Text>
-            <Text fontWeight="semibold" color="brand.900" truncate>
-              {after.fullName}
-            </Text>
-          </Box>
-          <Button size="sm" variant="outline" colorPalette="brand" loading={calling && callingId === after.id} disabled={calling} onClick={() => onCall(after.id)}>
-            {tx("{name} not here? Call {next} first", { name: next.fullName.split(" ")[0]!, next: after.fullName.split(" ")[0]! })}
-          </Button>
-        </Flex>
+      {/* Everyone still waiting. The absent ones stay here: when they arrive, tap Call. */}
+      {rest.length > 0 && (
+        <Card.Root>
+          <Card.Body p={{ base: "4", md: "5" }} gap="3">
+            <Box>
+              <Heading size="sm" color="brand.900">
+                {tx("Waiting list ({n})", { n: waiting.length })}
+              </Heading>
+              <Text fontSize="sm" color="fg.muted">
+                {tx("If someone has not arrived, call another. When they come, call them from this list.")}
+              </Text>
+            </Box>
+            <Stack gap="0">
+              {waiting.map((p, i) => (
+                <Flex key={p.id} align="center" gap="3" py="2.5" borderTopWidth={i === 0 ? "0" : "1px"}>
+                  <Text w="8" fontVariantNumeric="tabular-nums" fontSize="sm" color="fg.muted" textAlign="end">
+                    {p.number !== null ? `N° ${p.number}` : "—"}
+                  </Text>
+                  <ParticipantPhoto path={p.photoUrl} size="thumb" />
+                  <Box flex="1" minW="0">
+                    <Text fontWeight="semibold" color="brand.900" truncate>
+                      {p.fullName}
+                    </Text>
+                    <Text fontSize="xs" color="fg.muted" truncate>
+                      {p.institution}
+                    </Text>
+                  </Box>
+                  {i === 0 ? (
+                    <Badge colorPalette="green" variant="subtle">
+                      {tx("Next")}
+                    </Badge>
+                  ) : !canCall ? null : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorPalette="brand"
+                      loading={calling && callingId === p.id}
+                      disabled={calling}
+                      onClick={() => void onCall(p.id, { skipName: next.fullName })}
+                    >
+                      {tx("Call")}
+                    </Button>
+                  )}
+                </Flex>
+              ))}
+            </Stack>
+          </Card.Body>
+        </Card.Root>
       )}
     </Stack>
   );
@@ -328,6 +596,7 @@ function DrawCard({ participant: p }: { participant: StageParticipant }) {
   });
   const [error, setError] = useState<string | null>(null);
   const { tx } = useI18n();
+  const { canCall } = useContext(CallRights);
   const envelopes = slots.data?.envelopeSlots ?? [];
 
   async function sendBack() {
@@ -370,9 +639,11 @@ function DrawCard({ participant: p }: { participant: StageParticipant }) {
         participant={p}
         label={tx("On stage")}
         right={
-          <Button size="sm" variant="outline" color="white" borderColor="whiteAlpha.500" _hover={{ bg: "whiteAlpha.200" }} loading={callState.loading} onClick={sendBack}>
-            {tx("Not ready, send back")}
-          </Button>
+          canCall ? (
+            <Button size="sm" variant="outline" color="white" borderColor="whiteAlpha.500" _hover={{ bg: "whiteAlpha.200" }} loading={callState.loading} onClick={sendBack}>
+              {tx("Not ready, send back")}
+            </Button>
+          ) : undefined
         }
       />
       <Card.Body p={{ base: "4", md: "7" }} gap="5">
@@ -425,7 +696,7 @@ function DrawCard({ participant: p }: { participant: StageParticipant }) {
                 aria-label={tx("Envelope")}
                 aspectRatio={1.45}
                 rounded="lg"
-                bg="linear-gradient(160deg, #D9B45A 0%, #C99A35 100%)"
+                bg="linear-gradient(160deg, #FBB75E 0%, #F9971D 100%)"
                 color="brand.900"
                 display="flex"
                 alignItems="center"
@@ -458,6 +729,7 @@ function FinishBar({ participant: p, judgeCount, next }: { participant: StagePar
     refetchQueries: [{ query: STAGE }, { query: STAGE_QUEUE }],
   });
   const { tx } = useI18n();
+  const { canCall } = useContext(CallRights);
   const done = p.sheetsSubmitted >= judgeCount;
 
   async function onNext() {
@@ -475,6 +747,8 @@ function FinishBar({ participant: p, judgeCount, next }: { participant: StagePar
       toaster.error({ title: readApiError(err).message });
     }
   }
+
+  if (!canCall) return <ChiefCalls dark />;
 
   return (
     <Button
@@ -622,9 +896,12 @@ function Sheet({
   // Marks not yet on the server are kept on the tablet (see lib/sheetOutbox): after a reload or a
   // lost connection the judge finds them back here, and they are sent by themselves.
   const key = sheetKey(useQuery(ME).data?.me?.id ?? "", participant.id);
+  const stageRound = useContext(StageRound);
   const [kept] = useState(() => {
     const stored = initial?.submitted ? null : readSheet(key);
     if (!stored || stored.marks.length !== texts.length) return null;
+    // Marked in the other round (a tasfia copy still waiting once the final is on): not this sheet.
+    if ((stored.round ?? "TASFIA") !== stageRound) return null;
     // The server's copy changed after these marks were made (fixed from another device or tab):
     // the newer server copy wins, the old one on this tablet is dropped.
     if (stored.base !== undefined && initial && stored.base !== initial.updatedAt) {
@@ -642,11 +919,51 @@ function Sheet({
   const [submitWaiting, setSubmitWaiting] = useState(Boolean(kept?.submit));
   // The last send found no connection ("network") or a server that did not answer ("server").
   const [offline, setOffline] = useState<"network" | "server" | null>(null);
-  const [active, setActive] = useState(() => firstOpen(marks, rules));
+  // One page per question, then the sauti page (sauti, total, submitting). The judge moves on
+  // with "Done" (or the 3rd Fath, which deletes the question); a page opens once the one before is
+  // done. `reached` is the furthest page opened: those before it can be visited again.
+  const sautiStep = texts.length;
+  const [reached, setReached] = useState(() =>
+    startStep(marks, sauti, rules, Boolean(initial?.submitted || kept?.submit || panelDone)),
+  );
+  const [active, setActive] = useState(reached);
+  // Which way the last page change went: the new page slides in from that side.
+  const [direction, setDirection] = useState<"next" | "previous" | null>(null);
+  function show(step: number) {
+    if (step === active) return;
+    setDirection(step > active ? "next" : "previous");
+    setActive(step);
+  }
+  function finishQuestion(q: number) {
+    setReached((r) => Math.max(r, q + 1));
+    setDirection("next");
+    setActive(q + 1);
+  }
+  // The panel completed while this judge was still on a question: the sheet is closed, so every
+  // page opens and the sauti page comes up, where the finish bar moves the stage on.
+  const [panelSeen, setPanelSeen] = useState(panelDone);
+  if (panelDone && !panelSeen) {
+    setPanelSeen(true);
+    setReached(sautiStep);
+    setDirection("next");
+    setActive(sautiStep);
+  }
   const [undo, setUndo] = useState<{ q: number; kind: MarkKind }[]>([]);
   const [dirty, setDirty] = useState(Boolean(kept)); // changes not yet sent
   const [reviewing, setReviewing] = useState(false); // the check before submitting
   const [error, setError] = useState<string | null>(null);
+  // "Done" or Submit refused: these Fath, Tanbih or Kusita counts are not the other judges'. Each
+  // goes away once the judge changes that mark on that question.
+  const [refused, setRefused] = useState<MarkDifference[]>([]);
+  // And what the server finds on this judge's sheet, live: a judge who finished a question later
+  // counted it differently, so this judge (who already moved on) is told too.
+  const differences = [
+    ...refused,
+    ...(submitted ? [] : (participant.mySheet?.differs ?? [])).filter(
+      (d) => !refused.some((r) => r.question === d.question && r.mark === d.mark),
+    ),
+  ];
+  const flagged = (q: number, kind: MarkKind) => differences.some((d) => d.question === q + 1 && d.mark === kind);
   const { focus, ref: fillRef, height: fillHeight, pull } = useFocusScreen(fill);
   const { tx } = useI18n();
   const infos = texts.map(questionInfo);
@@ -701,13 +1018,17 @@ function Sheet({
               sauti: voice,
               presence: null, // always given by itself now
               submit,
+              round: stageRound,
             },
           },
         });
         setOffline(null);
         serverAt.current = res.data?.saveSheet.updatedAt ?? serverAt.current;
         if (version.current === v) setDirty(false);
-        if (res.data?.saveSheet.submitted) setSubmitted(true);
+        if (res.data?.saveSheet.submitted) {
+          setSubmitted(true);
+          setRefused([]);
+        }
         if (submit) setSubmitWaiting(false);
       } catch (err) {
         const failure = readApiError(err);
@@ -722,6 +1043,14 @@ function Sheet({
           setSubmitted(true);
           setSubmitWaiting(false);
           setDirty(false);
+        } else if (failure.code === "MARKS_DIFFER") {
+          // Counted differently from the judges who already submitted: the sheet stays open (a
+          // draft, still saved) and the judge is shown where to recount.
+          setRefused(failure.differences ?? []);
+          setError(null);
+          setSubmitWaiting(false);
+          setReviewing(false);
+          touch(); // the refused submission wrote nothing: the marks go in as a draft
         } else {
           setError(failure.message);
           if (submit) setSubmitWaiting(false); // refused: the judge sees why and can try again
@@ -742,8 +1071,8 @@ function Sheet({
   // On the tablet: every change until the server has it; gone once it does.
   useEffect(() => {
     if (submitted || (!dirty && !submitWaiting)) removeSheet(key);
-    else writeSheet(key, { marks, sauti, submit: submitWaiting, base: serverAt.current });
-  }, [key, marks, sauti, dirty, submitWaiting, submitted]);
+    else writeSheet(key, { marks, sauti, submit: submitWaiting, base: serverAt.current, round: stageRound });
+  }, [key, marks, sauti, dirty, submitWaiting, submitted, stageRound]);
 
   // This sheet sends itself; the desk's background sender leaves it alone while it is open.
   // A submission still waiting from before (the tablet was reloaded) goes in now.
@@ -781,10 +1110,40 @@ function Sheet({
     setMarks(next);
     keepSauti(next);
     touch();
+    setRefused((d) => d.filter((x) => !(x.question === q + 1 && x.mark === kind)));
     if (by === 1) {
       setUndo((u) => [...u, { q, kind }]);
-      // The 3rd Fath deletes the question: move on to the next one, as on paper.
-      if (kind === "fath" && next[q]!.fath >= rules.fathLimit && q < texts.length - 1) setActive(q + 1);
+      // The 3rd Fath deletes the question: it is done, the next page comes (after the last
+      // question, the sauti page), as on paper. Any other mark keeps the judge on this question:
+      // they move on themselves with "Done", however many kinds of mark they gave.
+      if (kind === "fath" && next[q]!.fath >= rules.fathLimit) void doneWith(q, next);
+    }
+  }
+
+  // "Done" on question q: the server first checks the Fath, Tanbih and Kusita counts (this question
+  // and those before) against the judges who finished them too. Different: the judge stays and
+  // recounts. No connection: the judge goes on (the counts are checked again at Submit).
+  const [finishOnServer, { loading: finishing }] = useMutation(FINISH_QUESTION);
+  async function doneWith(q: number, current: Marks[] = marks) {
+    try {
+      await finishOnServer({
+        variables: { input: { participantId: participant.id, questions: current, sauti, question: q + 1, round: stageRound } },
+      });
+      setRefused([]);
+      setError(null);
+      finishQuestion(q);
+    } catch (err) {
+      const failure = readApiError(err);
+      if (failure.code === "MARKS_DIFFER") {
+        setRefused(failure.differences ?? []);
+        setError(null);
+      } else if (failure.code === "SHEET_LOCKED") {
+        setSubmitted(true);
+      } else if (!failure.code || failure.code === "SERVER_UNAVAILABLE") {
+        finishQuestion(q);
+      } else {
+        setError(failure.message);
+      }
     }
   }
 
@@ -808,86 +1167,222 @@ function Sheet({
     const next = marks.map((m, i) => (i === last.q ? { ...m, [last.kind]: Math.max(0, m[last.kind] - 1) } : m));
     setMarks(next);
     keepSauti(next);
-    setActive(last.q);
+    show(last.q);
     touch();
+    setRefused((d) => d.filter((x) => !(x.question === last.q + 1 && x.mark === last.kind)));
   }
 
-  const q = marks[active]!;
+  const onSauti = active >= sautiStep;
+  const q = marks[Math.min(active, sautiStep - 1)]!;
   const deleted = q.fath >= rules.fathLimit;
   // The sauti is shared by the questions, a third each; a deleted question gets none of it.
   const live = marks.filter((m) => m.fath < rules.fathLimit).length;
   const allGone = live === 0;
   const sautiAdds = sauti === null ? null : round((sauti * live) / rules.questions);
 
-  // 1. Who, which question, the panel.
+  // 1. One glassy row: who is reciting, then the pages (questions, then sauti) as small steps,
+  // then the rules. Kept low so the mushaf gets the room.
   const top = (
-    <Flex align="center" gap={{ base: "2", md: "3" }} wrap={{ base: "wrap", lg: "nowrap" }} flexShrink={0}>
-      <Flex align="center" gap="2.5" minW="0" maxW={{ lg: "60" }} flexShrink={0}>
-        <ParticipantPhoto path={participant.photoUrl} size="thumb" />
-        <Box minW="0">
-          <Text fontWeight="bold" color="brand.900" lineHeight="1.2" truncate>
-            {participant.fullName}
-          </Text>
-          <Text fontSize="xs" color="fg.muted">
-            {participant.envelope ? tx("Envelope {n}", { n: participant.envelope.number }) : ""}
-          </Text>
-        </Box>
+    <Flex
+      align="center"
+      gap={{ base: "2", md: "3" }}
+      wrap={{ base: "wrap", lg: "nowrap" }}
+      flexShrink={0}
+      px="2"
+      py="1.5"
+      rounded={{ base: "2xl", lg: "full" }}
+      bg="whiteAlpha.700"
+      backdropFilter="blur(14px) saturate(160%)"
+      borderWidth="1px"
+      borderColor="whiteAlpha.800"
+      boxShadow="0 4px 16px rgba(26,35,78,0.08), inset 0 1px 0 rgba(255,255,255,0.9)"
+    >
+      {/* Who is reciting */}
+      <Flex align="center" gap="2" minW="0" maxW={{ lg: "60" }} flexShrink={{ base: 1, lg: 0 }}>
+        <Flex
+          boxSize="7"
+          rounded="full"
+          overflow="hidden"
+          flexShrink={0}
+          align="center"
+          justify="center"
+          borderWidth="1.5px"
+          borderColor="gold.400"
+          css={{ "& > *": { flexShrink: 0, transform: "scale(1.1)" } }}
+        >
+          <ParticipantPhoto path={participant.photoUrl} size="thumb" />
+        </Flex>
+        <Heading as="h2" fontFamily="display" fontSize={{ base: "sm", md: "md" }} fontWeight="bold" color="brand.900" lineHeight="1.15" truncate minW="0">
+          {participant.fullName}
+        </Heading>
       </Flex>
 
-      <Flex role="tablist" gap="2" flex="1" minW={{ base: "full", lg: "0" }} order={{ base: 3, lg: 0 }}>
-        {texts.map((text, i) => {
-          const gone = marks[i]!.fath >= rules.fathLimit;
+      {/* The pages, small steps */}
+      <Box w="1px" h="6" bg="blackAlpha.200" flexShrink={0} display={{ base: "none", lg: "block" }} />
+      <Flex role="tablist" align="center" gap="1.5" flex="1" minW={{ base: "full", lg: "0" }} order={{ base: 3, lg: 0 }}>
+        {[...texts, null].map((text, i) => {
+          const isSauti = text === null;
+          const gone = !isSauti && marks[i]!.fath >= rules.fathLimit;
           const on = i === active;
+          const locked = i > reached; // opens once the page before is done
+          const done = !isSauti && !gone && i < reached;
           return (
             <chakra.button
               key={i}
               type="button"
               role="tab"
               aria-selected={on}
-              onClick={() => setActive(i)}
-              flex="1"
+              aria-disabled={locked || undefined}
+              disabled={locked}
+              onClick={() => show(i)}
+              flex={isSauti ? "0.7" : "1"}
               minW="0"
+              h="8"
               display="flex"
               alignItems="center"
               gap="2"
-              px="2.5"
-              py="1.5"
-              rounded="xl"
+              ps="1"
+              pe="3"
+              rounded="full"
               textAlign="left"
-              cursor="pointer"
-              bg={on ? NAVY_GRADIENT : gone ? "red.50" : "white"}
-              color={on ? "white" : "brand.900"}
-              borderWidth="1px"
-              borderColor={on ? "gold.400" : gone ? "red.200" : "border"}
-              boxShadow={on ? "0 6px 16px rgba(26,35,78,0.28)" : undefined}
-              transition="background 0.2s, box-shadow 0.2s"
-              _hover={on ? undefined : { borderColor: gone ? "red.300" : "brand.200" }}
+              cursor={locked ? "not-allowed" : "pointer"}
+              opacity={locked ? 0.5 : 1}
+              outline={!isSauti && differences.some((d) => d.question === i + 1) ? "2px solid" : undefined}
+              outlineColor="red.500"
+              bg={
+                on
+                  ? "linear-gradient(160deg, #FBF1D6 0%, #F4E1A8 100%)"
+                  : gone
+                    ? "red.50"
+                    : done
+                      ? "green.50"
+                      : "transparent"
+              }
+              color={on ? "brand.900" : gone ? "red.700" : done ? "green.800" : "brand.800"}
+              boxShadow={on ? "0 2px 10px rgba(249,151,29,0.28), inset 0 0 0 1px rgba(249,151,29,0.45)" : undefined}
+              transition="background 0.2s, box-shadow 0.2s, opacity 0.2s"
+              _hover={on || locked ? undefined : { bg: gone ? "red.100" : done ? "green.100" : "blackAlpha.50" }}
               _focusVisible={{ outline: "3px solid", outlineColor: "gold.400", outlineOffset: "2px" }}
             >
-              <Circle size="7" flexShrink={0} fontWeight="bold" fontSize="sm" bg={on ? "gold.400" : gone ? "red.500" : "brand.50"} color={on ? "brand.900" : gone ? "white" : "brand.700"}>
-                {i + 1}
+              <Circle
+                size="6"
+                flexShrink={0}
+                fontWeight="bold"
+                fontSize="xs"
+                boxShadow={on ? "0 2px 6px rgba(26,35,78,0.3)" : undefined}
+                bg={on ? "brand.900" : gone ? "red.500" : done ? "green.500" : isSauti ? "gold.100" : "brand.50"}
+                color={on ? "gold.300" : gone || done ? "white" : isSauti ? "gold.700" : "brand.700"}
+              >
+                {locked ? <Lock size={11} aria-hidden /> : isSauti ? <Mic size={13} aria-hidden /> : done && !on ? <Check size={14} strokeWidth={3} aria-hidden /> : i + 1}
               </Circle>
-              <Box minW="0">
-                <Text fontSize="sm" fontWeight="semibold" lineHeight="1.2" truncate textDecoration={gone ? "line-through" : undefined}>
-                  {questionLabel(text)}
-                </Text>
-                <Text fontSize="2xs" color={on ? "whiteAlpha.700" : gone ? "red.600" : "fg.muted"} truncate>
-                  {gone ? tx("Deleted · 0") : infos[i] ? tx("Page {n}", { n: infos[i]!.page }) : ""}
-                </Text>
-              </Box>
+              <Text
+                fontFamily="display"
+                fontSize={{ base: "xs", md: "sm" }}
+                fontWeight={on ? "bold" : "semibold"}
+                letterSpacing="0.01em"
+                lineHeight="1.1"
+                truncate
+                textDecoration={gone ? "line-through" : undefined}
+              >
+                {isSauti ? (
+                  <>
+                    <MarkName mark={SAUTI} />
+                    {sauti !== null && ` · ${sauti}`}
+                  </>
+                ) : (
+                  questionLabel(text)
+                )}
+              </Text>
             </chakra.button>
           );
         })}
       </Flex>
 
-      <Flex align="center" gap="2" ms={{ base: "auto", lg: "0" }} flexShrink={0}>
+      <Flex align="center" gap="1" ms={{ base: "auto", lg: "0" }} flexShrink={0}>
         {aside}
         {onRules && (
-          <IconButton size="sm" variant="outline" colorPalette="brand" bg="white" aria-label={tx("Marking rules")} title={tx("Marking rules")} onClick={onRules}>
-            <BookOpen size={16} />
+          <IconButton size="xs" variant="ghost" rounded="full" color="brand.700" _hover={{ bg: "brand.50" }} aria-label={tx("Marking rules")} title={tx("Marking rules")} onClick={onRules}>
+            <BookOpen size={15} />
           </IconButton>
         )}
       </Flex>
+    </Flex>
+  );
+
+  // Over the marks: which question this page is, and where it is in the mushaf.
+  const lostHere = round(MARK_TYPES.reduce((sum, t) => sum + q[t.kind] * t.penalty(rules), 0));
+  const questionHead = !onSauti && (
+    <Flex
+      align="center"
+      gap="3"
+      flexShrink={0}
+      px="3"
+      py="2.5"
+      rounded="2xl"
+      bg="whiteAlpha.700"
+      backdropFilter="blur(14px) saturate(160%)"
+      borderWidth="1px"
+      borderColor="whiteAlpha.800"
+      boxShadow="0 4px 16px rgba(26,35,78,0.08), inset 0 1px 0 rgba(255,255,255,0.9)"
+    >
+      <Circle
+        size="11"
+        flexShrink={0}
+        fontFamily="display"
+        fontSize="xl"
+        fontWeight="bold"
+        bg={deleted ? "red.500" : "linear-gradient(160deg, #FDD199 0%, #FBB75E 55%, #F9971D 100%)"}
+        color={deleted ? "white" : "brand.900"}
+        boxShadow={deleted ? undefined : "0 4px 12px rgba(249,151,29,0.35)"}
+      >
+        {active + 1}
+      </Circle>
+      <Box minW="0" flex="1">
+        <Flex align="center" gap="1.5" fontSize="2xs" fontWeight="semibold" letterSpacing="0.14em" textTransform="uppercase" color="gold.700">
+          <Text>{tx("Question {n}", { n: active + 1 })}</Text>
+          <Text color="fg.subtle">·</Text>
+          <Text color="fg.muted">
+            {active + 1}/{texts.length}
+          </Text>
+          {infos[active] && (
+            <>
+              <Text color="fg.subtle">·</Text>
+              <Flex align="center" gap="1" color="fg.muted">
+                <BookOpen size={11} aria-hidden />
+                {tx("Page {n}", { n: infos[active]!.page })}
+              </Flex>
+            </>
+          )}
+        </Flex>
+        <Text
+          fontFamily="display"
+          fontSize={{ base: "lg", md: "xl" }}
+          fontWeight="semibold"
+          color={deleted ? "red.700" : "brand.900"}
+          lineHeight="1.2"
+          truncate
+          textDecoration={deleted ? "line-through" : undefined}
+        >
+          {questionLabel(texts[active]!)}
+        </Text>
+      </Box>
+      {/* What this question has lost so far */}
+      <Box textAlign="end" flexShrink={0}>
+        <Text
+          key={lostHere}
+          fontSize="lg"
+          fontWeight="bold"
+          lineHeight="1"
+          fontVariantNumeric="tabular-nums"
+          color={deleted ? "red.600" : lostHere ? "red.600" : "green.600"}
+          animation={lostHere ? "scale-in 0.2s ease-out" : undefined}
+        >
+          {deleted ? "0" : lostHere ? `−${lostHere}` : "✓"}
+        </Text>
+        <Text fontSize="2xs" color="fg.muted" mt="1" whiteSpace="nowrap">
+          {deleted ? tx("Deleted · 0") : lostHere ? tx("Points") : tx("No mistakes yet")}
+        </Text>
+      </Box>
     </Flex>
   );
 
@@ -907,6 +1402,7 @@ function Sheet({
           addDisabled={deleted || closed}
           readOnly={closed}
           tile={focus}
+          flagged={flagged(active, mark.kind)}
           onAdd={() => change(active, mark.kind, 1)}
           onRemove={() => change(active, mark.kind, -1)}
         />
@@ -918,20 +1414,82 @@ function Sheet({
       <Text fontSize="sm" fontWeight="semibold" color="red.700" flex="1">
         {tx("Deleted: {n} reminders", { n: rules.fathLimit })}
       </Text>
-      {active < texts.length - 1 && (
-        <Button size="xs" colorPalette="brand" onClick={() => setActive(active + 1)}>
-          {tx("Go to question {n}", { n: active + 2 })}
-        </Button>
-      )}
     </Flex>
+  );
+  // The judge is done with this question (whatever marks it got, even none): the next page.
+  // After the last question comes the sauti page. A closed sheet just pages through.
+  const lastQuestion = active === sautiStep - 1;
+  const nextButton = !onSauti && (
+    <Button
+      size="lg"
+      rounded="xl"
+      fontWeight="bold"
+      flexShrink={0}
+      bg={NAVY_GRADIENT}
+      color="white"
+      borderWidth="1px"
+      borderColor="gold.400"
+      _hover={{ boxShadow: "0 6px 16px rgba(26,35,78,0.28)" }}
+      loading={finishing}
+      onClick={() => (closed ? show(active + 1) : void doneWith(active))}
+    >
+      {closed
+        ? lastQuestion
+          ? tx("Go to the sauti")
+          : tx("Go to question {n}", { n: active + 2 })
+        : lastQuestion
+          ? tx("Done, go to the sauti")
+          : tx("Done, go to question {n}", { n: active + 2 })}
+      <ChevronRight size={18} aria-hidden />
+    </Button>
   );
 
   // 3. The mushaf, open at the question.
-  const book = infos[active] && <MushafPage key={texts[active]} start={infos[active]!.ref} maxH={focus ? "100%" : "80vh"} />;
+  const book = infos[active] && <MushafPage key={texts[active]} start={infos[active]!.ref} end={infos[active]!.end} maxH={focus ? "100%" : "80vh"} hug={focus} />;
 
-  const notices = (error || offline) && (
+  const notices = (error || offline || differences.length > 0) && (
     <Box flexShrink={0}>
       <ErrorAlert message={error} />
+      {differences.length > 0 && (
+        <Box role="alert" px="4" py="3" rounded="xl" bg="red.50" borderWidth="1px" borderColor="red.300" color="red.900">
+          <Flex align="center" gap="2" fontWeight="bold">
+            <TriangleAlert size={18} aria-hidden style={{ flexShrink: 0 }} />
+            {tx("Recount these marks")}
+          </Flex>
+          <Stack gap="1.5" mt="2">
+            {differences.map((d) => {
+              const type = MARK_TYPES.find((t) => t.kind === d.mark)!;
+              return (
+                <chakra.button
+                  key={`${d.question}-${d.mark}`}
+                  type="button"
+                  onClick={() => show(d.question - 1)}
+                  display="flex"
+                  alignItems="center"
+                  gap="2"
+                  px="3"
+                  py="1.5"
+                  rounded="lg"
+                  bg="white"
+                  borderWidth="1px"
+                  borderColor="red.200"
+                  textAlign="left"
+                  cursor="pointer"
+                  _hover={{ borderColor: "red.400" }}
+                >
+                  <Box flex="1" minW="0">
+                    <Text fontSize="xs" fontWeight="semibold" color="red.700">
+                      {tx("Question {n}", { n: d.question })} · <MarkName mark={type} />
+                    </Text>
+                    <Text fontWeight="semibold">{whatHappened(d, participant.fullName, tx)}</Text>
+                  </Box>
+                  <ChevronRight size={16} aria-hidden style={{ flexShrink: 0 }} />
+                </chakra.button>
+              );
+            })}
+          </Stack>
+        </Box>
+      )}
       {offline && (
         <OfflineNotice>
           {offline === "server"
@@ -947,17 +1505,9 @@ function Sheet({
   );
 
   // 4. Sauti once at the end, the total, and submitting.
-  const sautiLabel = (
-    <Flex align="center" gap="2" flexShrink={0}>
-      <Mic size={18} color="#E2C06A" aria-hidden />
-      <Text fontWeight="semibold" whiteSpace="nowrap">
-        <MarkName mark={SAUTI} />
-      </Text>
-    </Flex>
-  );
   // What the sauti really adds, so the judge never thinks a 5 gives 5 points when questions are deleted.
   const sautiNote = (
-    <Text fontSize="xs" color={live < texts.length ? "gold.200" : "whiteAlpha.700"} flexBasis={focus ? undefined : "full"}>
+    <Text fontSize="sm" color={live < texts.length ? "gold.200" : "whiteAlpha.700"}>
       {allGone
         ? tx("All questions deleted: no sauti.")
         : sautiAdds === null
@@ -968,39 +1518,57 @@ function Sheet({
     </Text>
   );
   const sautiButtons = (
-    <Flex gap="1.5" role="radiogroup" aria-label="Sauti" justify={focus ? "space-between" : undefined}>
-      {Array.from({ length: rules.sautiMax + 1 }, (_, v) => {
-        const on = sauti === v;
-        return (
-          <chakra.button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            disabled={closed || allGone}
-            onClick={() => {
-              setSauti(v);
-              touch();
-            }}
-            w={focus ? "9" : "10"}
-            h={focus ? "9" : "10"}
-            rounded="full"
-            fontWeight="bold"
-            cursor="pointer"
-            bg={on ? "gold.400" : "whiteAlpha.100"}
-            color={on ? "brand.900" : "white"}
-            borderWidth="1px"
-            borderColor={on ? "gold.300" : "whiteAlpha.300"}
-            transition="all 0.15s"
-            _hover={on || closed ? undefined : { bg: "whiteAlpha.200" }}
-            _disabled={{ cursor: "default", opacity: on ? 1 : 0.45 }}
-            _focusVisible={{ outline: "3px solid", outlineColor: "gold.400", outlineOffset: "2px" }}
-          >
-            {v}
-          </chakra.button>
-        );
-      })}
-    </Flex>
+    <Box>
+      <SimpleGrid columns={rules.sautiMax + 1} gap={{ base: "1.5", md: "2.5" }} role="radiogroup" aria-label="Sauti">
+        {Array.from({ length: rules.sautiMax + 1 }, (_, v) => {
+          const on = sauti === v;
+          const below = sauti !== null && v < sauti;
+          return (
+            <chakra.button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={closed || allGone}
+              onClick={() => {
+                setSauti(v);
+                touch();
+              }}
+              h={{ base: "14", md: "16" }}
+              rounded="xl"
+              fontFamily="display"
+              fontSize={{ base: "2xl", md: "3xl" }}
+              fontWeight="bold"
+              fontVariantNumeric="tabular-nums"
+              cursor="pointer"
+              bg={on ? "linear-gradient(160deg, #FDD199 0%, #FBB75E 45%, #F9971D 100%)" : below ? "gold.400/20" : "whiteAlpha.100"}
+              color={on ? "brand.900" : "white"}
+              borderWidth="1px"
+              borderColor={on ? "gold.200" : below ? "gold.400/50" : "whiteAlpha.200"}
+              boxShadow={on ? "0 10px 28px rgba(251,183,94,0.45)" : undefined}
+              transform={on ? "translateY(-2px)" : undefined}
+              transition="all 0.18s"
+              _hover={on || closed ? undefined : { bg: "whiteAlpha.200", borderColor: "gold.400/60" }}
+              _active={closed ? undefined : { transform: "scale(0.97)" }}
+              _disabled={{ cursor: "default", opacity: on ? 1 : 0.45 }}
+              _focusVisible={{ outline: "3px solid", outlineColor: "gold.300", outlineOffset: "2px" }}
+            >
+              {v}
+            </chakra.button>
+          );
+        })}
+      </SimpleGrid>
+      {/* How much of the sauti was given, as a gold line under the scale. */}
+      <Box h="1.5" mt="3" rounded="full" bg="whiteAlpha.200" overflow="hidden">
+        <Box
+          h="full"
+          w={`${sauti === null ? 0 : (sauti / rules.sautiMax) * 100}%`}
+          rounded="full"
+          bg="linear-gradient(90deg, #F9971D, #FDD199)"
+          transition="width 0.3s ease"
+        />
+      </Box>
+    </Box>
   );
   const status = (
     <Text fontSize="xs" color="whiteAlpha.700" lineClamp={1} minW="0" textAlign={focus ? "end" : undefined}>
@@ -1069,7 +1637,7 @@ function Sheet({
       loading={loading}
       onEdit={(i) => {
         setReviewing(false);
-        setActive(i);
+        show(i);
       }}
       onClose={() => setReviewing(false)}
       onSubmit={async () => {
@@ -1081,36 +1649,148 @@ function Sheet({
 
   // While reciting, on a tablet in landscape or a laptop: nothing to scroll. The mushaf takes the
   // whole height; marking, the sauti and submitting are beside it.
+  // Each page slides in from the side it comes from (none when the sheet first opens).
+  const slide = direction
+    ? `${direction === "next" ? "page-from-right" : "page-from-left"} 0.35s cubic-bezier(0.22, 1, 0.36, 1) both`
+    : undefined;
+
+  // The last page: the sauti scale, every question's points (tap one to go back to it), the total
+  // and submitting.
+  const sautiPage = (
+    <Box
+      position="relative"
+      overflow="hidden"
+      w="full"
+      maxW="3xl"
+      mx="auto"
+      rounded="3xl"
+      bg={NAVY_GRADIENT}
+      color="white"
+      boxShadow="0 24px 60px rgba(26,35,78,0.35)"
+      borderWidth="1px"
+      borderColor="gold.400/40"
+    >
+      <Box position="absolute" inset="0" pointerEvents="none" aria-hidden>
+        <StarLattice color="#F9971D" opacity={0.08} tile={64} />
+      </Box>
+      <Stack position="relative" gap={{ base: "5", md: "6" }} p={{ base: "5", md: "8" }}>
+        <Flex align="center" gap="4">
+          <Circle size={{ base: "12", md: "14" }} flexShrink={0} bg="linear-gradient(160deg, #FDD199 0%, #F9971D 100%)" color="brand.900" boxShadow="0 0 36px rgba(251,183,94,0.4)">
+            <Mic size={24} aria-hidden />
+          </Circle>
+          <Box flex="1" minW="0">
+            <Text fontSize="2xs" fontWeight="semibold" letterSpacing="0.18em" textTransform="uppercase" color="gold.300">
+              {tx("Last step")}
+            </Text>
+            <Heading as="h2" fontFamily="display" fontSize={{ base: "2xl", md: "3xl" }} lineHeight="1.15">
+              <MarkName mark={SAUTI} />
+            </Heading>
+          </Box>
+          <Box maxW="40">{status}</Box>
+        </Flex>
+
+        <Stack gap="2">
+          {sautiButtons}
+          {sautiNote}
+        </Stack>
+
+        <Stack gap="2">
+          <Text fontSize="2xs" fontWeight="semibold" letterSpacing="0.16em" textTransform="uppercase" color="whiteAlpha.700">
+            {tx("Questions")}
+          </Text>
+          <SimpleGrid columns={{ base: 1, sm: texts.length }} gap="2">
+            {marks.map((m, i) => {
+              const gone = m.fath >= rules.fathLimit;
+              return (
+                <chakra.button
+                  key={i}
+                  type="button"
+                  onClick={() => show(i)}
+                  display="flex"
+                  alignItems="center"
+                  gap="2.5"
+                  textAlign="left"
+                  px="3"
+                  py="2.5"
+                  rounded="xl"
+                  cursor="pointer"
+                  bg="whiteAlpha.100"
+                  borderWidth="1px"
+                  borderColor={gone ? "red.300/60" : "whiteAlpha.200"}
+                  _hover={{ bg: "whiteAlpha.200" }}
+                  _focusVisible={{ outline: "3px solid", outlineColor: "gold.400", outlineOffset: "2px" }}
+                >
+                  <Circle size="7" flexShrink={0} fontSize="xs" fontWeight="bold" bg={gone ? "red.500" : "whiteAlpha.200"}>
+                    {i + 1}
+                  </Circle>
+                  <Box minW="0">
+                    <Text fontSize="xs" color="whiteAlpha.700" truncate>
+                      {questionLabel(texts[i]!)}
+                    </Text>
+                    <Text fontWeight="bold" color={gone ? "red.200" : "white"} fontVariantNumeric="tabular-nums">
+                      {gone ? tx("Deleted · 0") : `${questionScore(m, sauti, rules)} / ${rules.questionPoints}`}
+                    </Text>
+                  </Box>
+                </chakra.button>
+              );
+            })}
+          </SimpleGrid>
+        </Stack>
+
+        <Flex align={{ base: "stretch", sm: "flex-end" }} direction={{ base: "column", sm: "row" }} gap="4" pt="5" borderTopWidth="1px" borderColor="whiteAlpha.200">
+          <Box flex="1" minW="0">
+            <ScoreTotal total={total} />
+          </Box>
+          <Flex align="center" gap="2" justify="flex-end">
+            {undoButton}
+            <Box flex={{ base: "1", sm: "initial" }} css={{ "& > button": { width: "100%" } }}>
+              {submitArea}
+            </Box>
+          </Flex>
+        </Flex>
+      </Stack>
+    </Box>
+  );
+
+  // Under a question's marks: where the draft is, undo, and "Done".
+  const questionBar = (
+    <Flex align="center" gap="2" ps="3" pe="1.5" py="1.5" rounded="2xl" bg={NAVY_GRADIENT} color="white" flexShrink={0} wrap="wrap" boxShadow="0 8px 24px rgba(26,35,78,0.18)">
+      <Box flex="1" minW="0">
+        {status}
+      </Box>
+      {undoButton}
+      {nextButton}
+    </Flex>
+  );
+
   if (focus) {
     return (
       <Box ref={fillRef} h={fillHeight ? `${fillHeight}px` : undefined} mb={pull ? `-${pull}px` : undefined}>
-        <Flex direction="column" h="full" gap="3">
+        <Flex direction="column" h="full" gap="2">
           {top}
-          <Flex flex="1" minH="0" gap="3">
-            <Box flex="1" minW="0" h="full">
-              {book}
-            </Box>
-            <Flex direction="column" w={{ base: "96", xl: "28rem", "2xl": "32rem" }} flexShrink={0} gap="2.5" minH="0" overflowY="auto">
-              {cards}
-              {deletedNote}
-              {notices}
-              <Stack gap="2" p="3" mt="auto" rounded="2xl" bg={NAVY_GRADIENT} color="white" flexShrink={0}>
-                <Flex align="center" justify="space-between" gap="2">
-                  {sautiLabel}
-                  {status}
+          <Box flex="1" minH="0" overflow="hidden">
+            {onSauti ? (
+              <Flex key="sauti" h="full" direction="column" gap="3" overflowY="auto" justify="safe center" animation={slide}>
+                {notices}
+                {sautiPage}
+              </Flex>
+            ) : (
+              <Flex key={active} h="full" gap="3" animation={slide}>
+                {/* The mushaf starts at the left edge and is only as wide as its pages; the mark
+                    cards take all the width that is left. */}
+                <Box flex="0 1 auto" minW="0" h="full" display="flex">
+                  {book}
+                </Box>
+                <Flex direction="column" flex="1" minW="72" gap="2" minH="0" overflowY="auto">
+                  {questionHead}
+                  {cards}
+                  {deletedNote}
+                  {notices}
+                  <Box mt="auto">{questionBar}</Box>
                 </Flex>
-                {sautiButtons}
-                {sautiNote}
-                <Flex align="flex-end" gap="3" pt="2" borderTopWidth="1px" borderColor="whiteAlpha.200">
-                  <Box flex="1" minW="0">
-                    <ScoreTotal total={total} compact />
-                  </Box>
-                  {undoButton}
-                </Flex>
-                {submitArea}
-              </Stack>
-            </Flex>
-          </Flex>
+              </Flex>
+            )}
+          </Box>
         </Flex>
         {review}
       </Box>
@@ -1119,24 +1799,23 @@ function Sheet({
 
   // A phone, a tablet upright, or a past sheet: one column, the page scrolls.
   return (
-    <Flex direction="column" gap="3">
+    <Flex direction="column" gap="3" overflowX="hidden">
       {top}
-      {cards}
-      {deletedNote}
-      {book}
-      {notices}
-      <Flex align="center" gap={{ base: "3", md: "4" }} wrap="wrap" px={{ base: "3", md: "4" }} py="1.5" rounded="2xl" bg={NAVY_GRADIENT} color="white" flexShrink={0}>
-        <Flex align="center" gap="2.5" minW="0" wrap="wrap">
-          {sautiLabel}
-          {sautiButtons}
-          {sautiNote}
-        </Flex>
-        <Flex align="center" gap="3" ms="auto" minW="0">
-          {undoButton}
-          <ScoreTotal total={total} compact />
-          {submitArea}
-        </Flex>
-      </Flex>
+      {onSauti ? (
+        <Stack key="sauti" gap="3" animation={slide}>
+          {notices}
+          {sautiPage}
+        </Stack>
+      ) : (
+        <Stack key={active} gap="3" animation={slide}>
+          {questionHead}
+          {cards}
+          {deletedNote}
+          {questionBar}
+          {book}
+          {notices}
+        </Stack>
+      )}
       {review}
     </Flex>
   );
@@ -1169,13 +1848,19 @@ function useSheetOutbox(onScreen: (string | null)[] | null) {
           try {
             await client.mutate({
               mutation: SAVE_SHEET,
-              variables: { input: { participantId, questions: sheet.marks, sauti: sheet.sauti, presence: null, submit: sheet.submit } },
+              variables: {
+                input: { participantId, questions: sheet.marks, sauti: sheet.sauti, presence: null, submit: sheet.submit, round: sheet.round ?? "TASFIA" },
+              },
             });
             removeSheet(key);
           } catch (err) {
             // Only a final answer (already in, or can never go in) ends it. A login that ran out or a
             // busy server keeps the marks on the tablet: they go once the judge is logged in again.
-            if (isFinalAnswer(readApiError(err).code)) removeSheet(key);
+            const code = readApiError(err).code;
+            // Counted differently from the judges who already submitted: kept as a draft (sent as
+            // one next time) for the judge to correct; the list shows it as not submitted.
+            if (code === "MARKS_DIFFER") writeSheet(key, { marks: sheet.marks, sauti: sheet.sauti, submit: false, base: sheet.base, round: sheet.round });
+            else if (isFinalAnswer(code)) removeSheet(key);
           }
         }
       } finally {
@@ -1226,7 +1911,7 @@ function ScoreTotal({ total, compact = false }: { total: number | null; compact?
         </Text>
       </Flex>
       <Box h="1" mt="1.5" rounded="full" bg="whiteAlpha.200" overflow="hidden">
-        <Box h="full" w={`${part * 100}%`} rounded="full" bg="linear-gradient(90deg, #C99A35, #F3DB98)" transition="width 0.4s ease" />
+        <Box h="full" w={`${part * 100}%`} rounded="full" bg="linear-gradient(90deg, #F9971D, #FDD199)" transition="width 0.4s ease" />
       </Box>
     </Box>
   );
@@ -1283,6 +1968,7 @@ function MarkCard({
   addDisabled,
   readOnly = false,
   tile = false,
+  flagged = false,
   onAdd,
   onRemove,
 }: {
@@ -1296,6 +1982,8 @@ function MarkCard({
   readOnly?: boolean;
   // Beside the book (a narrow column): a small tile, two side by side.
   tile?: boolean;
+  // Submit was refused: this count is not the other judges' on this question.
+  flagged?: boolean;
   onAdd: () => void;
   onRemove: () => void;
 }) {
@@ -1335,9 +2023,9 @@ function MarkCard({
       minW="0"
       rounded="2xl"
       bg={hit ? `${c}.50` : "white"}
-      borderWidth="1px"
-      borderColor={hit ? `${c}.300` : "border"}
-      boxShadow={hit ? "0 8px 20px rgba(26,35,78,0.10)" : "0 1px 2px rgba(26,35,78,0.06)"}
+      borderWidth={flagged ? "3px" : "1px"}
+      borderColor={flagged ? "red.500" : hit ? `${c}.300` : "border"}
+      boxShadow={flagged ? "0 0 0 4px rgba(229,62,62,0.18)" : hit ? "0 8px 20px rgba(26,35,78,0.10)" : "0 1px 2px rgba(26,35,78,0.06)"}
       overflow="hidden"
       opacity={locked ? 0.45 : 1}
       transition="background 0.2s, border-color 0.2s, box-shadow 0.2s"
@@ -1532,11 +2220,13 @@ function Recited({
   viewId,
   onOpen,
   judgeCount,
+  final = false,
 }: {
   recited: QueueParticipant[];
   viewId: string | null;
   onOpen: (id: string | null) => void;
   judgeCount: number;
+  final?: boolean;
 }) {
   const { tx } = useI18n();
   // Called back on stage: their turn was ended (by mistake) before every judge had submitted.
@@ -1544,6 +2234,7 @@ function Recited({
     refetchQueries: [{ query: STAGE }, { query: STAGE_QUEUE }],
   });
   const [callingId, setCallingId] = useState<string | null>(null);
+  const { canCall } = useContext(CallRights);
   async function callBack(p: QueueParticipant) {
     if (!(await confirmDialog({ message: tx("Call {name} back on stage? Only {n} of {total} judges have submitted.", { name: p.fullName, n: p.sheetsSubmitted, total: judgeCount }) }))) return;
     setCallingId(p.id);
@@ -1578,15 +2269,23 @@ function Recited({
             <Flex key={p.id} align="center" gap="3" py="2" borderTopWidth={i === 0 ? "0" : "1px"}>
               <ParticipantPhoto path={p.photoUrl} size="thumb" />
               <Box flex="1" minW="0">
-                <Text fontWeight="semibold" color="brand.900" truncate>
-                  {p.fullName}
-                </Text>
+                <Flex align="center" gap="2" minW="0">
+                  <Text fontWeight="semibold" color="brand.900" truncate>
+                    {p.fullName}
+                  </Text>
+                  {/* Refused (counted differently) or sent back by the admin: still to correct. */}
+                  {p.mySheet && !p.mySheet.submitted && p.sheetsSubmitted < judgeCount && (
+                    <Badge colorPalette="red" variant="solid" size="sm" flexShrink={0}>
+                      {tx("Not submitted")}
+                    </Badge>
+                  )}
+                </Flex>
                 <Text fontSize="xs" color="fg.muted">
                   {tx("Envelope {n}", { n: p.envelope!.number })} · {p.sheetsSubmitted === 1 ? tx("1 judge submitted") : tx("{n} judges submitted", { n: p.sheetsSubmitted })}
-                  {p.score !== null && ` · ${tx("final {n}", { n: p.score })}`}
+                  {(final ? p.finalScore : p.score) !== null && ` · ${tx("final {n}", { n: (final ? p.finalScore : p.score)! })}`}
                 </Text>
               </Box>
-              {p.sheetsSubmitted < judgeCount && (
+              {canCall && p.sheetsSubmitted < judgeCount && (
                 <Button size="sm" variant="outline" colorPalette="orange" loading={calling && callingId === p.id} disabled={calling} onClick={() => void callBack(p)}>
                   {tx("Call back")}
                 </Button>
@@ -1602,9 +2301,44 @@ function Recited({
   );
 }
 
-function firstOpen(marks: Marks[], r: ScoringRules) {
-  const i = marks.findIndex((m) => m.fath < r.fathLimit);
-  return i === -1 ? 0 : i;
+// The page a sheet opens on, also after a reload: the sauti page once the sheet is closed or the
+// sauti was given; otherwise the last question with marks (the one after it if that one is deleted).
+// Nothing marked yet: question 1.
+function startStep(marks: Marks[], sauti: number | null, r: ScoringRules, closed: boolean) {
+  if (closed || sauti !== null) return marks.length;
+  let last = -1;
+  marks.forEach((m, i) => {
+    if (hasMarks(m)) last = i;
+  });
+  if (last === -1) return 0;
+  return marks[last]!.fath >= r.fathLimit ? last + 1 : last;
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+
+// What happened to the participant, as the other judges all counted it, e.g. "Amuri Nsabimana
+// was reminded once". When the other judges do not agree among themselves: check that mark.
+function whatHappened(d: MarkDifference, name: string, tx: ReturnType<typeof useI18n>["tx"]) {
+  const v = { name, n: d.count ?? 0 };
+  const n = d.count;
+  switch (d.mark) {
+    case "fath":
+      if (n === null) return tx("Check how many times {name} was reminded.", v);
+      if (n === 0) return tx("{name} was not reminded.", v);
+      if (n === 1) return tx("{name} was reminded once.", v);
+      if (n === 2) return tx("{name} was reminded twice.", v);
+      return tx("{name} was reminded {n} times.", v);
+    case "tanbih":
+      if (n === null) return tx("Check how many times the table was tapped for {name}.", v);
+      if (n === 0) return tx("The table was not tapped for {name}.", v);
+      if (n === 1) return tx("The table was tapped for {name} once.", v);
+      if (n === 2) return tx("The table was tapped for {name} twice.", v);
+      return tx("The table was tapped for {name} {n} times.", v);
+    case "kusita":
+      if (n === null) return tx("Check how many times {name} hesitated.", v);
+      if (n === 0) return tx("{name} did not hesitate.", v);
+      if (n === 1) return tx("{name} hesitated once.", v);
+      if (n === 2) return tx("{name} hesitated twice.", v);
+      return tx("{name} hesitated {n} times.", v);
+  }
+}

@@ -66,9 +66,20 @@ export const fr: Messages = {
     SHEET_LOCKED: "Cette fiche a été envoyée et ne peut plus être modifiée.",
     ALREADY_RECITED: "Ce participant a déjà récité.",
     PANEL_COMPLETE: "Tous les juges ont déjà envoyé leur fiche pour ce participant : la note est définitive.",
+    MARKS_DIFFER: "Votre compte diffère de celui des autres juges. Recomptez les marques indiquées. Si vous êtes sûr, demandez à l’administrateur.",
+    NOT_FINALIST: "La finale a commencé : seuls les finalistes peuvent être appelés.",
+    FINAL_STARTED: "La finale a commencé : la tasfia ne peut plus changer.",
+    FINAL_UNDERWAY: "Un finaliste a déjà tiré une enveloppe de finale : la finale ne peut plus être annulée.",
+    ROUND_NOT_OVER: "La tasfia n’est pas terminée : quelqu’un est sur scène ou attend encore les fiches du jury.",
+    NO_FINALISTS: "Personne n’a réussi la tasfia : il n’y a pas de finale.",
+    ROUND_CHANGED: "Cette fiche a été remplie pendant la tasfia, mais la finale est maintenant sur scène : elle n’a pas été enregistrée.",
+    RESULTS_PUBLISHED: "Les résultats sont publiés : retirez-les d’abord pour changer une note.",
+    NOT_CHIEF_JUDGE: "Seul le juge principal appelle les participants.",
+    SEASON_CLOSED: "C’est une année passée : elle se consulte seulement. Revenez à l’année en cours pour faire des changements.",
     GOOGLE_DISABLED: "La connexion avec Google n’est pas configurée sur ce serveur. Utilisez votre e-mail et votre mot de passe.",
     GOOGLE_INVALID: "La connexion avec Google n’a pas abouti. Réessayez.",
     GOOGLE_NO_ACCOUNT: "Aucun compte de l’équipe n’utilise cet e-mail Google. Demandez un lien d’invitation à l’administrateur, ou connectez-vous avec votre e-mail et votre mot de passe.",
+    GOOGLE_ACCOUNT_USED: "Ce compte Google est déjà lié à un autre compte de l’équipe. Choisissez un autre compte Google, ou connectez-vous avec ce compte.",
   },
 
   server: {
@@ -148,6 +159,21 @@ export const fr: Messages = {
     invalidTitle: "Invitation non valide",
     invalidSubtitle: "Ce lien a déjà été utilisé, annulé ou a expiré.",
     invalidHelp: "Demandez à l’administrateur de vous envoyer un nouveau lien d’invitation.",
+  },
+
+  registration: {
+    eyebrow: "Inscription à la Musabaqa",
+    title: "Mon inscription est-elle acceptée ?",
+    subtitle: "Tapez le nom du participant tel qu’il a été donné à l’inscription.",
+    search: "Vérifier l’inscription",
+    noMatch: "Aucune inscription trouvée avec ce nom. Vérifiez l’orthographe, ou tapez le nom exactement comme sur le formulaire.",
+    approved: "Acceptée",
+    rejected: "Non acceptée",
+    pending: "En cours de vérification",
+    approvedHelp: "L’inscription est acceptée : rendez-vous à la compétition.",
+    rejectedHelp: "L’inscription n’a pas été acceptée. Contactez les organisateurs pour savoir pourquoi.",
+    pendingHelp: "Les organisateurs n’ont pas encore vérifié cette inscription. Revenez plus tard.",
+    number: (n: number) => `Ordre de passage : N° ${n}`,
   },
 
   results: {

@@ -36,9 +36,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
   attempts.delete(ip); // a right key is not a guess
 
+  const login = new URL("/login", request.url);
+  // Admin can share /enter/<key>?email=… so the login form opens with their address filled in.
+  const email = request.nextUrl.searchParams.get("email")?.trim();
+  if (email) login.searchParams.set("email", email);
+
   const response = wantsJson
     ? NextResponse.json({ ok: true }, { headers: { "cache-control": "no-store" } })
-    : NextResponse.redirect(new URL("/login", request.url));
+    : NextResponse.redirect(login);
   response.headers.set("cache-control", "no-store");
   return grantAccess(request, response, token);
 }

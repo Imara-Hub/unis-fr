@@ -71,11 +71,13 @@ export function RichSelect({
           aria-label={ariaLabel}
           bg="white"
           rounded="lg"
-          borderColor={chosen ? "gold.300" : "border"}
+          borderColor="blackAlpha.200"
           minH="11"
           pe="10" // room for the arrow
-          _hover={{ borderColor: "gold.400" }}
-          _focusVisible={{ borderColor: "gold.500", boxShadow: "0 0 0 3px var(--chakra-colors-gold-100)" }}
+          transition="background 0.15s, border-color 0.15s, box-shadow 0.15s"
+          _hover={{ bg: "brand.50", borderColor: "brand.200" }}
+          _expanded={{ bg: "brand.50", borderColor: "brand.300", boxShadow: "0 0 0 3px rgba(52,67,127,0.12)" }}
+          _focusVisible={{ borderColor: "brand.300", boxShadow: "0 0 0 3px rgba(52,67,127,0.12)" }}
         >
           {chosen ? (
             <Flex align="center" gap="2.5" minW="0" flex="1" textAlign="start">
@@ -97,7 +99,13 @@ export function RichSelect({
       </Select.Control>
       <Portal container={portalContainer}>
         <Select.Positioner>
-          <Select.Content maxH={maxH} overflowY="auto" p="1.5" rounded="xl" boxShadow="0 18px 40px -12px rgba(26,35,78,0.35)">
+          <Select.Content p="0" overflow="hidden" rounded="xl" boxShadow="lg" borderTopWidth="2px" borderTopColor="gold.400">
+            <Flex align="center" px="4" py="2.5" bg="bg.subtle" borderBottomWidth="1px" color="fg.muted">
+              <Text fontSize="xs" fontWeight="semibold" textTransform="uppercase" letterSpacing="0.12em" truncate>
+                {ariaLabel}
+              </Text>
+            </Flex>
+            <Box maxH={maxH} overflowY="auto" p="1.5">
             {options.map((o) => (
               <Select.Item
                 key={o.value}
@@ -107,7 +115,7 @@ export function RichSelect({
                 py="2"
                 gap="3"
                 cursor="pointer"
-                _highlighted={{ bg: "gold.50" }}
+                _highlighted={{ bg: "bg.muted" }}
                 _checked={{ bg: "brand.50" }}
               >
                 {o.badge !== undefined && <NumberBadge value={o.badge} />}
@@ -117,7 +125,7 @@ export function RichSelect({
                       {o.title}
                     </Text>
                     {o.tag && (
-                      <Badge size="xs" colorPalette="yellow" variant="subtle" rounded="full">
+                      <Badge size="xs" variant="subtle" bg="gold.100" color="gold.800" rounded="full">
                         {o.tag}
                       </Badge>
                     )}
@@ -129,9 +137,10 @@ export function RichSelect({
                   )}
                 </Box>
                 {o.arabic && <Arabic text={o.arabic} />}
-                <Select.ItemIndicator color="gold.600" />
+                <Select.ItemIndicator color="brand.600" />
               </Select.Item>
             ))}
+            </Box>
           </Select.Content>
         </Select.Positioner>
       </Portal>

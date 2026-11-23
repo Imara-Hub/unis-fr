@@ -13,7 +13,7 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { ChevronLeft, ChevronRight, Hourglass, Link2Off, MailOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, Hourglass, Link2Off, MailOpen, Trophy } from "lucide-react";
 import { useParams } from "next/navigation";
 import {
   Suspense,
@@ -79,7 +79,7 @@ function StageScreen() {
       pe="env(safe-area-inset-right)"
     >
       <Box position="absolute" inset="0" aria-hidden pointerEvents="none">
-        <StarLattice color="#C99A35" opacity={0.16} tile={72} />
+        <StarLattice color="#F9971D" opacity={0.16} tile={72} />
         <Box
           position="absolute"
           inset="0"
@@ -129,6 +129,7 @@ function StageScreen() {
         flex="1"
         minH="0"
         overflowY="auto"
+        overflowX="hidden" // the envelope pages slide in from the side
         direction="column"
         align="center"
         // "safe": content taller than the screen starts at the top instead of being cut off there.
@@ -157,18 +158,14 @@ function StageScreen() {
               "Ask the admin to open the new stage screen link on this tablet.",
             )}
           />
-        ) : view.participant && view.drawn ? (
+        ) : view.finished ? (
           <Message
-            icon={<MailOpen size={40} aria-hidden />}
-            gold
-            title={tx("Envelope {n} chosen", { n: view.envelopeNumber ?? "" })}
-            text={tx(
-              "Bismillah, {name}. The judges now see your questions. Recite when they are ready.",
-              {
-                name: firstName(view.participant.fullName),
-              },
-            )}
+            icon={<Trophy size={38} aria-hidden />}
+            title={tx("The competition is finished")}
+            text={tx("Every participant has recited. Thank you, and may Allah reward you.")}
           />
+        ) : view.participant && view.drawn ? (
+          <Drawn fullName={view.participant.fullName} />
         ) : !view.participant ? (
           // Nobody called yet: no envelopes, they appear when the judges call the next participant.
           <Message
@@ -181,6 +178,42 @@ function StageScreen() {
         )}
       </Flex>
     </Flex>
+  );
+}
+
+// After the draw: the Bismillah and the participant's name. Which envelope was opened is not
+// shown (nor sent to this screen): only the judges see it, with its questions.
+function Drawn({ fullName }: { fullName: string }) {
+  const { tx } = useI18n();
+  return (
+    <Stack align="center" textAlign="center" gap={{ base: "5", md: "7" }} maxW="3xl" animation="fade-in 0.5s ease-out">
+      <Flex align="center" gap="3" color="gold.300">
+        <Box h="1px" w={{ base: "8", md: "14" }} bg="gold.400" opacity={0.6} />
+        <Text fontSize={{ base: "sm", md: "md" }} fontWeight="semibold" letterSpacing="0.2em" textTransform="uppercase">
+          {tx("Your envelope is open")}
+        </Text>
+        <Box h="1px" w={{ base: "8", md: "14" }} bg="gold.400" opacity={0.6} />
+      </Flex>
+      {/* The calligraphic Bismillah ligature (﷽), as on the competition's cover. */}
+      <Text
+        lang="ar"
+        fontFamily="bismillah"
+        fontSize={{ base: "5xl", md: "7xl" }}
+        lineHeight="1.4"
+        color="gold.200"
+        textShadow="0 0 40px rgba(251,183,94,0.35)"
+        whiteSpace="nowrap"
+        aria-label="بسم الله الرحمن الرحيم"
+      >
+        {"﷽"}
+      </Text>
+      <Heading as="h1" fontFamily="display" fontSize={{ base: "4xl", md: "6xl" }} lineHeight="1.1">
+        {fullName}
+      </Heading>
+      <Text fontSize={{ base: "lg", md: "xl" }} color="whiteAlpha.800" maxW="xl">
+        {tx("Get ready to recite.")}
+      </Text>
+    </Stack>
   );
 }
 
@@ -205,13 +238,13 @@ function Message({
         size="24"
         bg={
           gold
-            ? "linear-gradient(160deg, #D9B45A 0%, #C99A35 100%)"
+            ? "linear-gradient(160deg, #FBB75E 0%, #F9971D 100%)"
             : "whiteAlpha.100"
         }
         color={gold ? "brand.900" : "gold.300"}
         borderWidth="1px"
         borderColor={gold ? "gold.300" : "whiteAlpha.200"}
-        boxShadow={gold ? "0 0 60px rgba(217,180,90,0.35)" : undefined}
+        boxShadow={gold ? "0 0 60px rgba(251,183,94,0.35)" : undefined}
       >
         {icon}
       </Circle>
@@ -238,6 +271,8 @@ const PER_PAGE = 10;
 function Draw({ token, view }: { token: string; view: StageScreenView }) {
   const [chosen, setChosen] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  // Which way the last page change went: the new page slides in from that side (none on first show).
+  const [direction, setDirection] = useState<"next" | "previous" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draw, { loading }] = useMutation(STAGE_SCREEN_DRAW, {
     update(cache, { data }) {
@@ -253,6 +288,12 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
   // The envelope they had chosen was taken by the judges' backup draw, or deleted.
   const stillThere =
     chosen && view.slots.some((s) => s.id === chosen) ? chosen : null;
+
+  function goTo(k: number) {
+    if (k === shownPage) return;
+    setDirection(k > shownPage ? "next" : "previous");
+    setPage(k);
+  }
 
   async function open() {
     if (!stillThere) return;
@@ -276,6 +317,7 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
             textTransform="uppercase"
             color="gold.300"
           >
+            {view.round === "FINAL" ? `${tx("Final")} · ` : ""}
             {tx("On stage")} · {name}
           </Text>
         <Heading
@@ -312,7 +354,13 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
         </Text>
       ) : (
         <SimpleGrid
-          key={shownPage} // each page fades in
+          key={shownPage} // remounts per page, so the slide plays again
+          animation={
+            direction
+              ? `${direction === "next" ? "page-from-right" : "page-from-left"} 0.4s cubic-bezier(0.22, 1, 0.36, 1) both`
+              : undefined
+          }
+          _motionReduce={{ animation: "fade-in 0.2s ease-out both" }}
           columns={{ base: 2, md: 5 }}
           gap={{ base: "5", md: "8", xl: "10" }}
           w="full"
@@ -322,7 +370,8 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
           {shown.map((slot, i) => (
             <EnvelopeCard
               key={slot.id}
-              index={i}
+              // The first page's envelopes appear one by one; after a page change they slide in together.
+              index={direction ? 0 : i}
               label={tx("Envelope")}
               selected={slot.id === stillThere}
               faded={Boolean(stillThere) && slot.id !== stillThere}
@@ -345,7 +394,7 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
             _disabled={{ opacity: 0.3, cursor: "not-allowed" }}
             disabled={shownPage === 0}
             aria-label={tx("Previous envelopes")}
-            onClick={() => setPage(shownPage - 1)}
+            onClick={() => goTo(shownPage - 1)}
           >
             <ChevronLeft size={20} aria-hidden />
           </Button>
@@ -356,7 +405,7 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
                 type="button"
                 aria-label={tx("Page {n}", { n: k + 1 })}
                 aria-current={k === shownPage ? "page" : undefined}
-                onClick={() => setPage(k)}
+                onClick={() => goTo(k)}
                 w={k === shownPage ? "8" : "3"}
                 h="3"
                 rounded="full"
@@ -376,7 +425,7 @@ function Draw({ token, view }: { token: string; view: StageScreenView }) {
             _disabled={{ opacity: 0.3, cursor: "not-allowed" }}
             disabled={shownPage === pages - 1}
             aria-label={tx("More envelopes")}
-            onClick={() => setPage(shownPage + 1)}
+            onClick={() => goTo(shownPage + 1)}
           >
             <ChevronRight size={20} aria-hidden />
           </Button>

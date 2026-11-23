@@ -67,9 +67,20 @@ export const en = {
     SHEET_LOCKED: "This sheet was submitted and can no longer be changed.",
     ALREADY_RECITED: "This participant has already recited.",
     PANEL_COMPLETE: "All the judges already submitted for this participant: the score is final.",
+    MARKS_DIFFER: "Your count differs from the other judges. Recount the marks shown. If you are sure, ask the admin.",
+    NOT_FINALIST: "The final is on: only the finalists can be called.",
+    FINAL_STARTED: "The final has started: the tasfia can no longer change.",
+    FINAL_UNDERWAY: "A finalist already drew a final envelope: the final can no longer be undone.",
+    ROUND_NOT_OVER: "The tasfia is not over: someone is on stage or still waits for the judges' sheets.",
+    NO_FINALISTS: "Nobody passed the tasfia, so there is no final.",
+    ROUND_CHANGED: "This sheet was marked in the tasfia, but the final is on stage now: it was not saved.",
+    RESULTS_PUBLISHED: "The results are published: unpublish them first to change a score.",
+    NOT_CHIEF_JUDGE: "Only the chief judge calls the participants.",
+    SEASON_CLOSED: "This is a past year: it can only be looked at. Go back to the current year to make changes.",
     GOOGLE_DISABLED: "Sign in with Google is not set up on this server. Use your email and password.",
     GOOGLE_INVALID: "Google sign-in did not go through. Try again.",
     GOOGLE_NO_ACCOUNT: "No account on the team uses this Google email. Ask the administrator for an invite link, or log in with your email and password.",
+    GOOGLE_ACCOUNT_USED: "This Google account is already linked to another account on the team. Choose another Google account, or log in with that account.",
   } as Record<string, string>,
 
   google: {
@@ -150,6 +161,21 @@ export const en = {
     invalidTitle: "Invitation not valid",
     invalidSubtitle: "This link was already used, cancelled or has expired.",
     invalidHelp: "Ask the administrator to send you a new invitation link.",
+  },
+
+  registration: {
+    eyebrow: "Musabaqa registration",
+    title: "Was my registration accepted?",
+    subtitle: "Type the participant’s name as it was given at registration.",
+    search: "Check the registration",
+    noMatch: "No registration found with this name. Check the spelling, or type the name exactly as on the form.",
+    approved: "Accepted",
+    rejected: "Not accepted",
+    pending: "Being checked",
+    approvedHelp: "The registration is accepted: see you at the competition.",
+    rejectedHelp: "The registration was not accepted. Contact the organisers to know why.",
+    pendingHelp: "The organisers have not checked this registration yet. Come back later.",
+    number: (n: number) => `Order of passage: N° ${n}`,
   },
 
   results: {

@@ -13,7 +13,6 @@ import {
   IconButton,
   Input,
   Menu,
-  NativeSelect,
   Portal,
   SimpleGrid,
   Stack,
@@ -28,11 +27,25 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { readApiError } from "@/lib/errors";
 import type { Role } from "@/lib/graphql/auth";
 import { SETTINGS } from "@/lib/graphql/participants";
-import { REMOVE_USER, RESET_USER_PASSWORD, SET_USER_ACTIVE, TEAM, UPDATE_USER, type InvitableRole, type TeamMember } from "@/lib/graphql/staff";
-import { CalendarDays, CirclePause, CirclePlay, Copy, Ellipsis, KeyRound, Mail, MessageCircle, Pencil, Trash2 } from "lucide-react";
-import { CopyButton } from "@/components/CopyButton";
-import { GREETING } from "@/lib/greeting";
+import { NEW_LOGIN_LINK, REMOVE_USER, RESET_USER_PASSWORD, SET_USER_ACTIVE, TEAM, UPDATE_USER, type InvitableRole, type TeamMember } from "@/lib/graphql/staff";
+import { CalendarDays, Eye, Gavel, UserCog, CirclePause, CirclePlay, Ellipsis, KeyRound, Link2, Mail, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { LoginLinkActions } from "@/components/LoginLinkActions";
+import { TemporaryPassword } from "@/components/TemporaryPassword";
 import { useI18n } from "@/lib/i18n";
+import { Dropdown, DropdownCard, dropdownItemStyle, ItemBadge } from "@/components/Dropdown";
+
+// Where to log in, for the message with a new password: the member's personal login link (it also
+// opens the app's gate on their browser), else the login page with their email filled in. Never
+// the team's access key: it would travel in WhatsApp messages and could be forwarded.
+function loginLinkFor(email: string | null | undefined, personalLink: string | null | undefined) {
+  if (typeof window === "undefined") return null;
+  const origin = window.location.origin;
+  if (personalLink) return new URL(personalLink, origin).toString();
+  if (!email) return null;
+  const url = new URL("/login", origin);
+  url.searchParams.set("email", email);
+  return url.toString();
+}
 
 // Colours per role, matching the role badges: card band, avatar ring, section stripe.
 const TONE: Record<Role, { band: string; ring: string; soft: string }> = {
@@ -51,6 +64,7 @@ export function TeamMembers({ showAdmin = false, framed = false, empty }: { show
   const [resetting, setResetting] = useState<TeamMember | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [setActive] = useMutation(SET_USER_ACTIVE);
+  const [newLoginLink] = useMutation(NEW_LOGIN_LINK);
   const { tx } = useI18n();
 
   const users = data?.users ?? [];
@@ -64,6 +78,25 @@ export function TeamMembers({ showAdmin = false, framed = false, empty }: { show
     setActionError(null);
     try {
       await setActive({ variables: { input: { userId: u.id, active: !u.isActive } } });
+    } catch (err) {
+      setActionError(readApiError(err).message);
+    }
+  }
+
+  // The link went to the wrong person, or a phone was lost.
+  async function renewLink(u: TeamMember) {
+    const first = u.name.split(" ")[0]!;
+    if (
+      !(await confirmDialog({
+        message: tx("Make a new login link for {name}? The old link stops working and {name} is logged out on every device. Then send them the new one.", { name: first }),
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
+    setActionError(null);
+    try {
+      await newLoginLink({ variables: { userId: u.id } });
     } catch (err) {
       setActionError(readApiError(err).message);
     }
@@ -87,6 +120,7 @@ export function TeamMembers({ showAdmin = false, framed = false, empty }: { show
                   onEdit={() => setEditing(u)}
                   onToggle={() => toggleActive(u)}
                   onResetPassword={() => setResetting(u)}
+                  onNewLink={() => renewLink(u)}
                   onRemove={() => setRemoving(u)}
                 />
               ))}
@@ -148,7 +182,7 @@ function RoleSection({
       </Flex>
       {short && (
         <Text fontSize="sm" color="orange.700" bg="orange.50" px="3" py="2" rounded="md">
-          {tx("The competition needs {total} judges: invite {n} more, or change the number in Settings, Competition.", {
+          {tx("The panel has {total} judges: add {n} more, or change the number of judges on the panel.", {
             total: judgeCount!,
             n: judgeCount! - active,
           })}
@@ -173,12 +207,14 @@ function MemberCard({
   onEdit,
   onToggle,
   onResetPassword,
+  onNewLink,
   onRemove,
 }: {
   member: TeamMember;
   onEdit: () => void;
   onToggle: () => void;
   onResetPassword: () => void;
+  onNewLink: () => void;
   onRemove: () => void;
 }) {
   const tone = TONE[u.role];
@@ -214,25 +250,37 @@ function MemberCard({
             </Menu.Trigger>
             <Portal>
               <Menu.Positioner>
-                <Menu.Content minW="52">
-                  <Menu.Item value="edit" onSelect={onEdit}>
-                    <EditIcon />
+                <DropdownCard title={u.name} minW="60">
+                  <Menu.Item value="edit" onSelect={onEdit} {...dropdownItemStyle()}>
+                    <ItemBadge>
+                      <EditIcon />
+                    </ItemBadge>
                     {tx("Edit name or role")}
                   </Menu.Item>
-                  <Menu.Item value="active" onSelect={onToggle}>
-                    {u.isActive ? <PauseIcon /> : <CirclePlay size={16} aria-hidden />}
+                  <Menu.Item value="active" onSelect={onToggle} {...dropdownItemStyle()}>
+                    <ItemBadge>{u.isActive ? <PauseIcon /> : <CirclePlay size={16} aria-hidden />}</ItemBadge>
                     {u.isActive ? tx("Deactivate") : tx("Reactivate")}
                   </Menu.Item>
-                  <Menu.Item value="password" onSelect={onResetPassword}>
-                    <KeyRound size={16} aria-hidden />
+                  <Menu.Item value="link" onSelect={onNewLink} {...dropdownItemStyle()}>
+                    <ItemBadge>
+                      <RefreshCw size={16} aria-hidden />
+                    </ItemBadge>
+                    {tx("New login link")}
+                  </Menu.Item>
+                  <Menu.Item value="password" onSelect={onResetPassword} {...dropdownItemStyle()}>
+                    <ItemBadge>
+                      <KeyRound size={16} aria-hidden />
+                    </ItemBadge>
                     {tx("Forgotten password")}
                   </Menu.Item>
-                  <Menu.Separator />
-                  <Menu.Item value="remove" color="fg.error" _highlighted={{ bg: "bg.error", color: "fg.error" }} onSelect={onRemove}>
-                    <TrashIcon />
+                  <Menu.Separator my="1.5" />
+                  <Menu.Item value="remove" onSelect={onRemove} {...dropdownItemStyle(false, "danger")}>
+                    <ItemBadge tone="danger">
+                      <TrashIcon />
+                    </ItemBadge>
                     {tx("Remove from the team")}
                   </Menu.Item>
-                </Menu.Content>
+                </DropdownCard>
               </Menu.Positioner>
             </Portal>
           </Menu.Root>
@@ -254,6 +302,17 @@ function MemberCard({
           </Text>
         </Flex>
       </Stack>
+
+      {/* Personal login link: copy or send it any time (not for the admin; paused while deactivated) */}
+      {u.role !== "ADMIN" && (
+        <Stack gap="1.5" px="4" mt="3">
+          <Flex align="center" gap="1.5" fontSize="xs" color="fg.muted" justify="center">
+            <Link2 size={12} aria-hidden />
+            {u.loginLink ? tx("Login link, no password needed") : tx("Login link paused while deactivated")}
+          </Flex>
+          {u.loginLink && <LoginLinkActions name={u.name} path={u.loginLink} size="xs" stretch />}
+        </Stack>
+      )}
 
       {/* Joined + status */}
       <Flex mt="4" px="4" py="2.5" borderTopWidth="1px" bg="bg.subtle" justify="space-between" align="center" fontSize="xs">
@@ -309,13 +368,18 @@ function EditMemberDialog({ member, onClose }: { member: TeamMember; onClose: ()
                     <Input value={name} onChange={(e) => setName(e.target.value)} />
                   </FormField>
                   <FormField label={tx("Role")} helper={tx(ROLE_STYLE[role].does)}>
-                    <NativeSelect.Root>
-                      <NativeSelect.Field value={role} onChange={(e) => setRole(e.currentTarget.value as InvitableRole)}>
-                        <option value="JUDGE">{tx("Judge")}</option>
-                        <option value="STAFF">{tx("Staff")}</option>
-                      </NativeSelect.Field>
-                      <NativeSelect.Indicator />
-                    </NativeSelect.Root>
+                    {/* Inside the dialog: the list opens within it. */}
+                    <Dropdown
+                      label={tx("Role")}
+                      icon={<UserCog size={15} strokeWidth={2} />}
+                      portalled={false}
+                      value={role}
+                      onChange={(v) => setRole(v as InvitableRole)}
+                      options={[
+                        { value: "JUDGE", label: tx("Judge"), icon: <Gavel size={15} aria-hidden />, detail: tx(ROLE_STYLE.JUDGE.does) },
+                        { value: "STAFF", label: tx("Staff"), icon: <Eye size={15} aria-hidden />, detail: tx(ROLE_STYLE.STAFF.does) },
+                      ]}
+                    />
                   </FormField>
                   {role !== member.role && (
                     <Text fontSize="sm" color="gold.700">
@@ -401,7 +465,7 @@ function RemoveMemberDialog({ member, onClose }: { member: TeamMember; onClose: 
 function ResetPasswordDialog({ member, onClose }: { member: TeamMember; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState<string | null>(null);
-  const [reset, { loading }] = useMutation(RESET_USER_PASSWORD);
+  const [reset, { loading }] = useMutation(RESET_USER_PASSWORD, { refetchQueries: [{ query: TEAM }] });
   const { tx } = useI18n();
   const first = member.name.split(" ")[0]!;
 
@@ -414,12 +478,6 @@ function ResetPasswordDialog({ member, onClose }: { member: TeamMember; onClose:
       setError(readApiError(err).message);
     }
   }
-
-  const whatsapp = password
-    ? `https://wa.me/?text=${encodeURIComponent(
-        `${GREETING} ${first}! ${tx("Your new temporary password for Musabaqa:")}\n${password}\n${tx("Log in with it, then choose your own password in Settings, Password.")}`,
-      )}`
-    : "";
 
   return (
     <Dialog.Root open onOpenChange={(e) => !e.open && onClose()} placement="center" role={password ? "dialog" : "alertdialog"}>
@@ -436,40 +494,13 @@ function ResetPasswordDialog({ member, onClose }: { member: TeamMember; onClose:
               <Stack gap="3">
                 <ErrorAlert message={error} />
                 {password ? (
-                  <>
-                    <Box
-                      px="4"
-                      py="3"
-                      rounded="md"
-                      bg="bg.subtle"
-                      borderWidth="1px"
-                      borderStyle="dashed"
-                      borderColor="gold.400"
-                      fontFamily="mono"
-                      fontSize="2xl"
-                      fontWeight="semibold"
-                      color="brand.900"
-                      textAlign="center"
-                      letterSpacing="0.08em"
-                      userSelect="all"
-                    >
-                      {password}
-                    </Box>
-                    <Flex gap="2" wrap="wrap">
-                      <CopyButton value={password} colorPalette="brand" icon={<Copy size={16} aria-hidden />}>
-                        {tx("Copy password")}
-                      </CopyButton>
-                      <Button asChild variant="outline" colorPalette="green">
-                        <a href={whatsapp} target="_blank" rel="noreferrer">
-                          <MessageCircle size={16} aria-hidden />
-                          {tx("Send on WhatsApp")}
-                        </a>
-                      </Button>
-                    </Flex>
-                    <Text fontSize="sm" color="fg.muted">
-                      {tx("Shown only once: copy it or send it now. {name} logs in with it, then chooses their own password in Settings, Password.", { name: first })}
-                    </Text>
-                  </>
+                  <TemporaryPassword
+                    password={password}
+                    name={member.name}
+                    email={member.email}
+                    loginUrl={loginLinkFor(member.email, member.loginLink)}
+                    note={tx("{name} logs in with it. You can see it again any time in Login details on the Team page.", { name: first })}
+                  />
                 ) : (
                   <>
                     <Text>{tx("A temporary password is created for {name}. The old one stops working and they are logged out on every device.", { name: member.name })}</Text>

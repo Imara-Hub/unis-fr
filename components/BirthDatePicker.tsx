@@ -1,7 +1,8 @@
 "use client";
 
-import { DatePicker, Flex, NativeSelect, parseDate, Portal, useDatePickerContext, type DateValue } from "@chakra-ui/react";
+import { DatePicker, Flex, parseDate, Portal, useDatePickerContext, type DateValue } from "@chakra-ui/react";
 import { CalendarDays } from "lucide-react";
+import { Dropdown } from "@/components/Dropdown";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -105,34 +106,29 @@ function MonthYearHeader({ labels }: { labels: { month: string; year: string } }
     <DatePicker.ViewControl>
       <DatePicker.PrevTrigger />
       <Flex gap="2" flex="1" justify="center">
-        <NativeSelect.Root size="sm" flex="1.4">
-          <NativeSelect.Field
-            aria-label={labels.month}
-            value={focused.month}
-            onChange={(e) => picker.focusMonth(Number(e.currentTarget.value))}
-          >
-            {picker.getMonths({ format: "long" }).map((m) => (
-              <option key={m.value} value={m.value} disabled={m.disabled}>
-                {m.label}
-              </option>
-            ))}
-          </NativeSelect.Field>
-          <NativeSelect.Indicator />
-        </NativeSelect.Root>
-        <NativeSelect.Root size="sm" flex="1">
-          <NativeSelect.Field
-            aria-label={labels.year}
-            value={focused.year}
-            onChange={(e) => picker.focusYear(Number(e.currentTarget.value))}
-          >
-            {years.map((y) => (
-              <option key={y.value} value={y.value} disabled={y.disabled}>
-                {y.label}
-              </option>
-            ))}
-          </NativeSelect.Field>
-          <NativeSelect.Indicator />
-        </NativeSelect.Root>
+        {/* Inside the calendar: the lists open within it (a click outside would close it). */}
+        <Dropdown
+          label={labels.month}
+          size="sm"
+          portalled={false}
+          minW="48"
+          maxH="64"
+          flex="1.4"
+          value={String(focused.month)}
+          onChange={(v) => picker.focusMonth(Number(v))}
+          options={picker.getMonths({ format: "long" }).map((m) => ({ value: String(m.value), label: m.label, badge: m.value, disabled: m.disabled }))}
+        />
+        <Dropdown
+          label={labels.year}
+          size="sm"
+          portalled={false}
+          minW="32"
+          maxH="64"
+          flex="1"
+          value={String(focused.year)}
+          onChange={(v) => picker.focusYear(Number(v))}
+          options={years.map((y) => ({ value: String(y.value), label: String(y.label), disabled: y.disabled }))}
+        />
       </Flex>
       <DatePicker.NextTrigger />
     </DatePicker.ViewControl>

@@ -9,7 +9,7 @@ import { useI18n } from "@/lib/i18n";
 // apart for red/green colorblind readers. Failed is light on white, so every chart also shows
 // labels with the numbers (color is never the only clue).
 export const RESULT_COLORS = { passed: "#15803d", failed: "#f87171", pending: "#e4e4e7" } as const;
-const GOLD = "#B3832A";
+const GOLD = "#E07F0A";
 const INK_MUTED = "#71717a";
 const GRID = "#ececef";
 

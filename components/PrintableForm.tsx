@@ -8,6 +8,7 @@ import { useEffect, useMemo } from "react";
 import { FullPageSpinner } from "@/components/AuthCard";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { PrintStyles, RegistrationSheet } from "@/components/RegistrationSheet";
+import { useBannerReady } from "@/components/brand/YearBanner";
 import { ReviewActions } from "@/components/ReviewActions";
 import { toaster } from "@/components/Toaster";
 import { readApiError } from "@/lib/errors";
@@ -21,6 +22,7 @@ import { useI18n } from "@/lib/i18n";
 export function PrintableForm({ id, queue = false }: { id: string | null; queue?: boolean }) {
   const router = useRouter();
   const me = useQuery(ME);
+  const bannerReady = useBannerReady(); // print once the banner is in
   const role = me.data?.me?.role;
   const { data, loading, error } = useQuery(PARTICIPANT, { variables: { id: id ?? "" }, skip: !id || role !== "ADMIN" });
   const { tx } = useI18n();
@@ -129,7 +131,7 @@ export function PrintableForm({ id, queue = false }: { id: string | null; queue?
           </Flex>
         )}
         {!problem && (
-          <Button colorPalette="brand" variant="outline" size="sm" onClick={() => window.print()}>
+          <Button colorPalette="brand" variant="outline" size="sm" onClick={() => window.print()} loading={!bannerReady}>
             <Printer size={16} aria-hidden />
             {tx("Print or save as PDF")}
           </Button>

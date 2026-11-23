@@ -37,6 +37,8 @@ export interface ParticipantRow {
   score: number | null; // final: the judges' average, null until the panel is complete
   status: ParticipantStatus;
   finalist: boolean; // among the best who passed: goes to the final
+  inFinal: boolean; // the finalists, fixed when the admin started the final
+  finalScore: number | null; // the final's score: the judges' average there, null until then
   sheetsSubmitted: number; // judges who submitted their sheet
   registeredAt: string;
   review: ReviewStatus;
@@ -72,6 +74,10 @@ export interface Settings {
   maxScore: number;
   judgeCount: number; // judges who must submit before the average counts
   finalistCount: number; // the best this many of those who passed go to the final
+  // The judge who alone calls participants to the stage; null = any judge may call.
+  // Only in the SETTINGS and PARTICIPANT_COUNTS queries.
+  chiefJudgeId?: string | null;
+  chiefJudgeName?: string | null;
   // Only in the SETTINGS query: is the public results page showing the results?
   resultsPublished?: boolean;
   resultsPublishedAt?: string | null;
@@ -109,7 +115,10 @@ const ROW_FIELDS = gql`
     score
     status
     finalist
-    sheetsSubmitted
+    inFinal
+    finalScore
+    # Lists are about the tasfia (the round everyone recites in).
+    sheetsSubmitted(round: TASFIA)
     registeredAt
     review
   }
@@ -151,6 +160,30 @@ export const PARTICIPANTS: TypedDocumentNode<
   ${ROW_FIELDS}
 `;
 
+// Admin and staff: each judge's total for every approved participant (the Ranking table).
+export interface RankingSheet {
+  id: string;
+  total: number | null;
+  submitted: boolean;
+  judge: { id: string; name: string } | null;
+}
+export const RANKING_SHEETS: TypedDocumentNode<{ participants: { id: string; sheets: RankingSheet[] }[] }> = gql`
+  query RankingSheets {
+    participants(review: APPROVED) {
+      id
+      sheets(round: TASFIA) {
+        id
+        total
+        submitted
+        judge {
+          id
+          name
+        }
+      }
+    }
+  }
+`;
+
 export const PARTICIPANT_COUNTS: TypedDocumentNode<{ participantCounts: Counts; settings: Settings }> = gql`
   query ParticipantCounts {
     participantCounts {
@@ -167,6 +200,8 @@ export const PARTICIPANT_COUNTS: TypedDocumentNode<{ participantCounts: Counts; 
       maxScore
       judgeCount
       finalistCount
+      chiefJudgeId
+      chiefJudgeName
       updatedAt
     }
   }
@@ -227,6 +262,29 @@ export const REJECT_PARTICIPANT: TypedDocumentNode<
   ${DETAIL_FIELDS}
 `;
 
+// Admin only: the order of passage. The ids get N° 1, 2, 3… in that order; everyone else loses theirs.
+export const NUMBER_PARTICIPANTS: TypedDocumentNode<{ numberParticipants: { id: string; number: number | null }[] }, { ids: string[] }> = gql`
+  mutation NumberParticipants($ids: [ID!]!) {
+    numberParticipants(ids: $ids) {
+      id
+      number
+    }
+  }
+`;
+
+// Admin only: one number (swaps with whoever had it), or null to take it away.
+export const SET_PARTICIPANT_NUMBER: TypedDocumentNode<
+  { setParticipantNumber: { id: string; number: number | null } },
+  { id: string; number: number | null }
+> = gql`
+  mutation SetParticipantNumber($id: ID!, $number: Int) {
+    setParticipantNumber(id: $id, number: $number) {
+      id
+      number
+    }
+  }
+`;
+
 export const DELETE_PARTICIPANT: TypedDocumentNode<{ deleteParticipant: boolean }, { id: string }> = gql`
   mutation DeleteParticipant($id: ID!) {
     deleteParticipant(id: $id)
@@ -240,6 +298,8 @@ export const SETTINGS: TypedDocumentNode<{ settings: Settings }> = gql`
       maxScore
       judgeCount
       finalistCount
+      chiefJudgeId
+      chiefJudgeName
       resultsPublished
       resultsPublishedAt
       updatedAt
@@ -257,6 +317,29 @@ export const UPDATE_SETTINGS: TypedDocumentNode<
       maxScore
       judgeCount
       finalistCount
+      updatedAt
+    }
+  }
+`;
+
+// Only the panel size (the Team page): the other settings stay as they are.
+export const SET_JUDGE_COUNT: TypedDocumentNode<{ updateSettings: { judgeCount: number; updatedAt: string } }, { judgeCount: number }> = gql`
+  mutation SetJudgeCount($judgeCount: Int!) {
+    updateSettings(input: { judgeCount: $judgeCount }) {
+      judgeCount
+      updatedAt
+    }
+  }
+`;
+
+export const SET_CHIEF_JUDGE: TypedDocumentNode<
+  { setChiefJudge: { chiefJudgeId: string | null; chiefJudgeName: string | null; updatedAt: string } },
+  { userId: string | null }
+> = gql`
+  mutation SetChiefJudge($userId: ID) {
+    setChiefJudge(input: { userId: $userId }) {
+      chiefJudgeId
+      chiefJudgeName
       updatedAt
     }
   }
@@ -324,6 +407,25 @@ export interface PublicResult {
   score: number | null;
   finalist: boolean;
 }
+
+// The same page: someone who registered checks whether the registration was accepted.
+export interface PublicRegistration {
+  fullName: string;
+  institution: string;
+  review: "PENDING_REVIEW" | "APPROVED" | "REJECTED";
+  number: number | null; // the order of passage, once accepted and numbered
+}
+
+export const REGISTRATION_LOOKUP: TypedDocumentNode<{ registrationLookup: PublicRegistration[] }, { name: string }> = gql`
+  query RegistrationLookup($name: String!) {
+    registrationLookup(name: $name) {
+      fullName
+      institution
+      review
+      number
+    }
+  }
+`;
 
 export const RESULT_LOOKUP: TypedDocumentNode<
   { resultLookup: { published: boolean; matches: PublicResult[] } },

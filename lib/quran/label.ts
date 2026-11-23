@@ -1,23 +1,43 @@
-import { juzOf, pageOf, parseRef, surahArabicName, type AyahRef } from ".";
+import { juzOf, pageOf, parseQuestion, surahArabicName, type AyahRef } from ".";
 import { surahLabel } from "./names";
 
 export interface QuestionInfo {
-  ref: AyahRef;
+  ref: AyahRef; // where the recitation starts
+  end: AyahRef; // where it finishes
   surah: string; // "Al-Baqarah" (the organisers' spelling, see ./names)
   arabic: string; // "البقرة"
   page: number;
+  endPage: number;
   juz: number;
 }
 
-/** What a question ("2:255") points at. Null for an old free-text question. */
+/** What a question ("2:255-2:258", or an older "2:255") points at. Null for an old free-text question. */
 export function questionInfo(text: string): QuestionInfo | null {
-  const ref = parseRef(text);
-  if (!ref) return null;
-  return { ref, surah: surahLabel(ref.surah), arabic: surahArabicName(ref.surah), page: pageOf(ref), juz: juzOf(ref) };
+  const q = parseQuestion(text);
+  if (!q) return null;
+  const { start, end } = q;
+  return {
+    ref: start,
+    end,
+    surah: surahLabel(start.surah),
+    arabic: surahArabicName(start.surah),
+    page: pageOf(start),
+    endPage: pageOf(end),
+    juz: juzOf(start),
+  };
 }
 
-/** "2:255" → "Al-Baqarah 255". An old free-text question is shown as it was written. */
+/** "Al-Baqarah 255", or "Al-Baqarah 286" for an end in the same surah as `from`. */
+export const ayahLabel = (r: AyahRef) => `${surahLabel(r.surah)} ${r.ayah}`;
+
+/**
+ * "2:255-2:258" → "Al-Baqarah 255 → 258"; across surahs "Al-Baqarah 286 → Aal-Imran 5".
+ * An old free-text question is shown as it was written.
+ */
 export function questionLabel(text: string): string {
   const info = questionInfo(text);
-  return info ? `${info.surah} ${info.ref.ayah}` : text;
+  if (!info) return text;
+  const { ref, end } = info;
+  if (end.surah === ref.surah && end.ayah === ref.ayah) return ayahLabel(ref);
+  return `${ayahLabel(ref)} → ${end.surah === ref.surah ? end.ayah : ayahLabel(end)}`;
 }

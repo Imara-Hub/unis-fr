@@ -14,6 +14,7 @@ import {
   List,
   Separator,
   SimpleGrid,
+  Spinner,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -25,6 +26,7 @@ import { BirthDatePicker } from "@/components/BirthDatePicker";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { CompetitionBand } from "@/components/brand/CompetitionTitle";
 import { FormField } from "@/components/FormField";
+import { API_ORIGIN } from "@/lib/api";
 import { readApiError } from "@/lib/errors";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -169,11 +171,47 @@ export default function RegisterPage() {
   );
 }
 
+// The API rests after 15 minutes without requests (free hosting) and takes up to a minute to wake;
+// one request gives up after 15 s. So on this public page, the first one people open: a plain call
+// to /health wakes it at once (no time limit), and a failed load is asked again every 5 s, up to
+// 2 minutes. Only "cannot reach" and "server busy" are retried; a real answer (e.g. a bad link)
+// shows at once.
+const RETRY_EVERY_MS = 5_000;
+const MAX_TRIES = 24;
+
+function useWakeServer(error: unknown, refetch: () => Promise<unknown>) {
+  const [tries, setTries] = useState(0);
+  const code = error ? readApiError(error).code : null;
+  const reachable = error ? code !== undefined && code !== "SERVER_UNAVAILABLE" : true;
+  const retrying = Boolean(error) && !reachable && tries < MAX_TRIES;
+
+  useEffect(() => {
+    fetch(`${API_ORIGIN}/health`, { cache: "no-store" }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!retrying) return;
+    const timer = setTimeout(() => {
+      setTries((n) => n + 1);
+      void refetch().catch(() => {});
+    }, RETRY_EVERY_MS);
+    return () => clearTimeout(timer);
+  }, [retrying, tries, refetch]);
+
+  const again = () => {
+    setTries(0);
+    fetch(`${API_ORIGIN}/health`, { cache: "no-store" }).catch(() => {});
+    void refetch().catch(() => {});
+  };
+  return { tries, retrying, again };
+}
+
 function Register() {
   const { token } = useParams<{ token: string }>();
-  const { t, apiError } = useI18n();
+  const { t, apiError, tx } = useI18n();
   const tr = t.register;
   const status = useQuery(REGISTRATION_LINK_STATUS, { variables: { token }, fetchPolicy: "network-only" });
+  const waking = useWakeServer(status.error && !status.data ? status.error : null, status.refetch);
   // `queued`: no connection, the registration waits on this phone and is sent by itself.
   const [done, setDone] = useState<{ fullName: string; keep: Partial<FormState>; queued?: boolean } | null>(null);
   const queue = useRegistrationQueue(token);
@@ -183,14 +221,35 @@ function Register() {
   const [closed, setClosed] = useState(false);
 
   // Only the first load: a refetch (new terms after TERMS_CHANGED) keeps the form and what was typed.
-  if (status.loading && !status.data) return <FullPageSpinner />;
+  if (status.loading && !status.data && !waking.tries) return <FullPageSpinner />;
   const notice = <QueueNotice queue={queue} terms={status.data?.registrationLinkStatus.terms ?? null} />;
+  // The server is asleep (it rests after a quiet time) or the connection dropped: it is woken and
+  // asked again by itself for up to ~2 minutes, before showing the error with "Try again".
+  if (!status.data && (waking.retrying || (status.loading && waking.tries > 0))) {
+    return (
+      <AuthCard title={tr.errorTitle} top={banner}>
+        <Stack gap="4" align="center" textAlign="center" py="4">
+          <Spinner size="lg" color="brand.600" />
+          <Text fontWeight="semibold" color="brand.900">
+            {tx("Connecting to the server…")}
+          </Text>
+          <Text fontSize="sm" color="fg.muted">
+            {tx("The first visit after a quiet time can take up to a minute. Please keep this page open.")}
+          </Text>
+        </Stack>
+      </AuthCard>
+    );
+  }
   if (status.error && !status.data) {
     return (
       <AuthCard title={tr.errorTitle} top={banner}>
         <Stack gap="4">
           {notice}
           <ErrorAlert message={apiError(readApiError(status.error)).message} />
+          <Button colorPalette="brand" onClick={waking.again}>
+            <RefreshCw size={16} aria-hidden />
+            {tx("Try again")}
+          </Button>
         </Stack>
       </AuthCard>
     );
@@ -682,7 +741,8 @@ function RegistrationForm({
               }}
             />
           </FormField>
-          <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4">
+          {/* Without the phone, the date of birth takes the whole width. */}
+          <SimpleGrid columns={{ base: 1, sm: !by || by === "SELF" ? 2 : 1 }} gap="4">
             {/* One number per registration: a parent or school gives only theirs, above. */}
             {(!by || by === "SELF") && (
               <FormField label={tr.phone} error={fieldErrors.phone} helper={tr.phoneHelp}>

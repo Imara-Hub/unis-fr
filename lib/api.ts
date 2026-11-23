@@ -1,3 +1,5 @@
+import { getPhotoTicket } from "./sessionToken";
+
 // The GraphQL endpoint, and the API server's origin for photos and the PDF.
 //
 // When the page is opened through the computer's network address (a phone on the same
@@ -22,3 +24,13 @@ export const API_ORIGIN = new URL(API_URL).origin;
 // page is reached on. Use it in effects or client-only components, not in server-rendered markup,
 // otherwise the two can differ (hydration warning).
 export const apiUrl = (path: string) => `${new URL(resolveApiUrl()).origin}${path}`;
+
+// Photos and avatars are loaded by <img>, which cannot send Authorization. This tab's photo
+// ticket is added as ?ticket= so several people logged in in the same browser each see their own
+// pictures (the shared cookie alone would be whoever logged in last). Never the login token.
+export function authedUrl(path: string) {
+  const url = new URL(apiUrl(path));
+  const ticket = getPhotoTicket();
+  if (ticket) url.searchParams.set("ticket", ticket);
+  return url.toString();
+}

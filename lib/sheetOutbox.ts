@@ -1,4 +1,4 @@
-import type { Marks } from "@/lib/graphql/judging";
+import type { Marks, Round } from "@/lib/graphql/judging";
 
 // A judge's sheet kept on the tablet (localStorage) until the server has it, so a lost connection,
 // a reload or a closed tab never loses a mark. `submit`: the judge already pressed Submit and the
@@ -12,6 +12,9 @@ export interface StoredSheet {
   // If the server copy changed since (fixed from another device), the server copy wins.
   // Missing in copies saved by older versions.
   base?: string | null;
+  // The round it was marked in (missing: the tasfia, from before the final existed). Sent with it,
+  // so a tasfia sheet still waiting here when the final starts is never taken as a final sheet.
+  round?: Round;
 }
 
 const PREFIX = "musabaqa-sheet:";
@@ -75,7 +78,7 @@ export function waitingSheets(judgeId: string) {
 // Answers that settle a waiting sheet for good: it is in (SHEET_LOCKED: already submitted), or it
 // can never go in (participant deleted, panel complete, invalid marks). Anything else (login expired,
 // too many requests, server error, no connection) leaves the sheet on the tablet to send again later.
-const FINAL_ANSWERS = new Set(["SHEET_LOCKED", "NOT_FOUND", "NOT_DRAWN", "PANEL_COMPLETE", "VALIDATION_FAILED"]);
+const FINAL_ANSWERS = new Set(["SHEET_LOCKED", "NOT_FOUND", "NOT_DRAWN", "PANEL_COMPLETE", "VALIDATION_FAILED", "ROUND_CHANGED"]);
 export const isFinalAnswer = (code: string | undefined) => Boolean(code && FINAL_ANSWERS.has(code));
 
 // Sheets open on screen send themselves; the background sender leaves them alone.
