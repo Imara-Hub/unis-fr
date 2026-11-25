@@ -10,10 +10,13 @@ import { Providers } from "./providers";
 // semibold wherever it is.
 const body = Source_Sans_3({ subsets: ["latin", "latin-ext"], variable: "--font-body", display: "swap" });
 const display = Source_Serif_4({ subsets: ["latin", "latin-ext"], weight: "600", variable: "--font-display", display: "swap" });
+// The Arabic fonts (about 330 KB together) are not preloaded: the browser fetches a weight only
+// when a page shows Arabic in it. Preloaded, every page (the registration form, the results) waited
+// for them first, which on a 2G phone is half a minute before the form appears.
 // Lateef for every Arabic text in the app (mark names, surah names, labels…).
-const arabic = Lateef({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-arabic", display: "swap" });
+const arabic = Lateef({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-arabic", display: "swap", preload: false });
 // Amiri stays only for the Bismillah (the ﷽ ligature on the login card, the mushaf, the stage envelope).
-const bismillah = Amiri({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-bismillah", display: "swap" });
+const bismillah = Amiri({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-bismillah", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   title: { default: "Musabaqa", template: "%s · Musabaqa" },

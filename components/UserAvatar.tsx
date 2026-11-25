@@ -14,7 +14,7 @@ export function UserAvatar({
   return (
     <Avatar.Root size={size} bg="gold.300" color="brand.950" borderWidth="1px" borderColor="gold.200" flexShrink={0}>
       <Avatar.Fallback name={name} fontWeight="semibold" />
-      {avatarUrl && <Avatar.Image src={authedUrl(avatarUrl)} alt="" />}
+      {avatarUrl && <Avatar.Image src={authedUrl(avatarUrl, 160)} alt="" />}
     </Avatar.Root>
   );
 }

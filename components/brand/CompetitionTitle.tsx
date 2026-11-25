@@ -7,12 +7,16 @@ import { editionLine, useBranding } from "@/components/brand/YearBanner";
 const NAME =
   "مسابقة بوروندي الكبرى لحفظ القرآن الكريم — Grand concours de mémorisation du Saint Coran au Burundi — Mashindano makubwa ya kuhifadhi Quran tukufu nchini Burundi";
 
+// The title is never wider than about 600 px on screen: with `sizes`, a phone downloads a copy at
+// its own width (WebP, a few dozen KB) instead of the 1600 px file (~200 KB), which matters on 2G.
+const TITLE_SIZES = "(max-width: 640px) 100vw, 600px";
+
 // The competition's title artwork (Arabic calligraphy, French and Swahili), in white:
 // for navy backgrounds only. public/title-white.png is 1600×293.
 export function CompetitionTitle({ maxW = "full", priority }: { maxW?: string | Record<string, string>; priority?: boolean }) {
   return (
     <Box w="full" maxW={maxW}>
-      <Image src="/title-white.png" alt={NAME} width={1600} height={293} priority={priority} style={{ width: "100%", height: "auto" }} />
+      <Image src="/title-white.png" alt={NAME} width={1600} height={293} priority={priority} sizes={TITLE_SIZES} style={{ width: "100%", height: "auto" }} />
     </Box>
   );
 }
@@ -25,7 +29,7 @@ export function CompetitionBand() {
   return (
     <Box display="flex" flexDirection="column" alignItems="center" gap="2.5" textAlign="center" pb="1">
       <Box w="full" maxW="xl">
-        <Image src="/title-navy.png" alt={NAME} width={1600} height={293} priority style={{ width: "100%", height: "auto" }} />
+        <Image src="/title-navy.png" alt={NAME} width={1600} height={293} priority sizes={TITLE_SIZES} style={{ width: "100%", height: "auto" }} />
       </Box>
       <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="semibold" letterSpacing="0.18em" color="gold.600" minH="1.5em">
         {line}

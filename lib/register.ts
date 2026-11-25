@@ -52,8 +52,9 @@ export class PhotoTooSmallError extends Error {}
 // Phone cameras make 3–8 MB photos in any shape. For a passport photo, cut the largest
 // 35:45 portrait out of the middle (a little towards the top, where the face usually is) and
 // scale it to 700 × 900. Other photos are only shrunk to at most 1000 px. Then re-encode as
-// JPEG: ~150 KB, always under the server's 2 MB limit. ID documents pass a larger maxSide so
-// the text stays readable.
+// JPEG at quality 0.8: ~80–120 KB for the photo, ~150–250 KB for an ID document (larger maxSide,
+// so its text stays readable), always under the server's 2 MB limit. Small on purpose: on a 2G
+// (EDGE) phone, sending goes at a few KB per second.
 export async function preparePhoto(file: File, { passport = false, maxSide = MAX_SIDE } = {}): Promise<Blob> {
   // Phone photos carry their rotation in EXIF: apply it, or portraits come out sideways.
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => createImageBitmap(file));
@@ -91,7 +92,7 @@ export async function preparePhoto(file: File, { passport = false, maxSide = MAX
 }
 
 async function toJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.8));
   if (!blob || blob.size > MAX_BYTES) throw new Error("photo too large");
   return blob;
 }
@@ -127,27 +128,47 @@ export async function registerParticipant(
   form.append("0", photo, "photo.jpg");
   form.append("1", idDocument, "id-document.jpg");
 
-  let res: Response;
+  // A weak connection can stall without ever failing: give up after a while and treat it as no
+  // connection, so the registration waits on the phone and goes again (instead of a spinner for
+  // ever, and a queue that never moves on). The wait grows with what is sent: on 2G two photos take
+  // a minute or two, and a fixed limit would cut every try short, the queued ones too.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), registerTimeoutMs(photo.size + idDocument.size));
   try {
-    res = await fetch(API_URL, {
-      method: "POST",
-      body: form,
-      credentials: "include",
-      headers: { "x-csrf": "1" },
-    });
-  } catch {
-    return NETWORK_ERROR; // no connection
+    let res: Response;
+    try {
+      res = await fetch(API_URL, {
+        method: "POST",
+        body: form,
+        credentials: "include",
+        headers: { "x-csrf": "1" },
+        signal: controller.signal,
+      });
+    } catch {
+      return NETWORK_ERROR; // no connection, or no answer in time
+    }
+    let body: { data?: { registerParticipant: { fullName: string } }; errors?: GraphQLErrorLike[] };
+    try {
+      body = await res.json();
+    } catch {
+      // Cut off while the answer was arriving: as if there were no connection. If it did go in, the
+      // next try is told ALREADY_REGISTERED and the person is asked to check.
+      if (controller.signal.aborted) return NETWORK_ERROR;
+      // The server answered, but not with JSON: a proxy in front of the API (nginx, Render…).
+      // Too large is a final "no" (smaller photos are needed); a server error is "try again later".
+      if (res.status === 413) return apiErrorFrom({ message: "", extensions: { code: "INVALID_PHOTO" } });
+      if (res.status >= 500) return apiErrorFrom({ message: "", extensions: { code: "INTERNAL_SERVER_ERROR" } });
+      return apiErrorFrom({ message: `The server refused the registration (HTTP ${res.status}).`, extensions: { code: "HTTP_ERROR" } });
+    }
+    if (body.errors?.length || !body.data) return apiErrorFrom(body.errors?.[0]);
+    return body.data.registerParticipant;
+  } finally {
+    clearTimeout(timer);
   }
-  let body: { data?: { registerParticipant: { fullName: string } }; errors?: GraphQLErrorLike[] };
-  try {
-    body = await res.json();
-  } catch {
-    // The server answered, but not with JSON: a proxy in front of the API (nginx, Render…).
-    // Too large is a final "no" (smaller photos are needed); a server error is "try again later".
-    if (res.status === 413) return apiErrorFrom({ message: "", extensions: { code: "INVALID_PHOTO" } });
-    if (res.status >= 500) return apiErrorFrom({ message: "", extensions: { code: "INTERNAL_SERVER_ERROR" } });
-    return apiErrorFrom({ message: `The server refused the registration (HTTP ${res.status}).`, extensions: { code: "HTTP_ERROR" } });
-  }
-  if (body.errors?.length || !body.data) return apiErrorFrom(body.errors?.[0]);
-  return body.data.registerParticipant;
+}
+
+// How long one registration may take to send: a minute, plus the photos at 2 KB per second (a
+// poor EDGE line), at most 4½ minutes (the API stops waiting for a request after 5).
+export function registerTimeoutMs(bytes: number) {
+  return Math.min(60_000 + Math.ceil(bytes / 2_000) * 1_000, 270_000);
 }

@@ -13,9 +13,11 @@ export function ParticipantPhoto({ path, size }: { path: string; size: "avatar" 
         : size === "medium"
           ? { w: "16", h: "20" }
           : { w: "40", h: "52" };
+  // Twice the size shown, so it stays sharp on phone screens, and still a few KB.
+  const width = size === "avatar" ? 64 : size === "large" ? 320 : 160;
   return (
     <Image
-      src={authedUrl(path)}
+      src={authedUrl(path, width)}
       alt=""
       {...dims}
       flexShrink={0}

@@ -44,13 +44,15 @@ export const isAyah = ({ surah, ayah }: AyahRef) =>
 /** 0-based position in the whole Quran. */
 export const indexOf = ({ surah, ayah }: AyahRef) => SURAH_OFFSETS[surah - 1]! + ayah - 1;
 
-// The mushaf line each ayah starts on (see lines.ts): (page - 1) × 15 + line - 1.
+// The mushaf lines each ayah starts and ends on, counted through the whole mushaf (see lines.ts).
 const FIRST_LINE: number[] = [];
+const LAST_LINE: number[] = [];
 {
   let line = 0;
   for (let i = 0; i < AYAH_LINES.length; i += 2) {
     line += parseInt(AYAH_LINES[i]!, 36);
     FIRST_LINE.push(line);
+    LAST_LINE.push(line + parseInt(AYAH_LINES[i + 1]!, 36));
   }
 }
 
@@ -162,14 +164,15 @@ export interface Question {
 }
 
 /**
- * Where a recitation of `lines` mushaf lines from `start` finishes: the last ayah that begins on
- * or before the last of those lines (it is recited to its end). Never before `start`.
+ * Where a recitation of `lines` mushaf lines from `start` finishes: the last ayah that ends within
+ * those lines, as a page is read (a long ayah is fine as long as it fits). The participant always
+ * finishes the ayah they start, so a start ayah longer than the span is the whole question.
  */
 export function spanEnd(start: AyahRef, lines: number): AyahRef {
   const i = indexOf(start);
   const target = FIRST_LINE[i]! + Math.max(1, lines) - 1;
   let j = i;
-  while (j < TOTAL_AYAHS - 1 && FIRST_LINE[j + 1]! <= target) j++;
+  while (j < TOTAL_AYAHS - 1 && LAST_LINE[j + 1]! <= target) j++;
   return fromIndex(j);
 }
 

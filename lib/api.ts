@@ -28,8 +28,11 @@ export const apiUrl = (path: string) => `${new URL(resolveApiUrl()).origin}${pat
 // Photos and avatars are loaded by <img>, which cannot send Authorization. This tab's photo
 // ticket is added as ?ticket= so several people logged in in the same browser each see their own
 // pictures (the shared cookie alone would be whoever logged in last). Never the login token.
-export function authedUrl(path: string) {
+// `width`: a small copy the API makes (64, 160, 320 or 800 px wide), for lists and slow phones; the
+// full picture (~100–150 KB) only where it is looked at closely or printed.
+export function authedUrl(path: string, width?: 64 | 160 | 320 | 800) {
   const url = new URL(apiUrl(path));
+  if (width) url.searchParams.set("w", String(width));
   const ticket = getPhotoTicket();
   if (ticket) url.searchParams.set("ticket", ticket);
   return url.toString();

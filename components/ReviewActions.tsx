@@ -104,6 +104,7 @@ export function ReviewActions({
                     rows={3}
                     autoFocus
                   />
+                  <Field.HelperText>{tx("Once you publish the decisions, anyone who searches this name on the public check page reads this reason: write it for the person.")}</Field.HelperText>
                   <Field.ErrorText>{reasonError}</Field.ErrorText>
                 </Field.Root>
                 <Text fontSize="xs" color="fg.muted" mt="3">

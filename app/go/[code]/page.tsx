@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AuthCard, FullPageSpinner } from "@/components/AuthCard";
 import { ErrorAlert } from "@/components/ErrorAlert";
+import { googleSignInAvailable } from "@/components/GoogleSignIn";
 import { readApiError } from "@/lib/errors";
 import { LOGIN_WITH_LINK } from "@/lib/graphql/auth";
 import { useI18n } from "@/lib/i18n";
@@ -49,7 +50,9 @@ export default function LoginLinkPage() {
       <Stack gap="5">
         <ErrorAlert message={error} />
         <Text fontSize="sm" color="fg.muted">
-          {tx("If you also have a password or a Google account for Musabaqa, you can log in with it instead.")}
+          {googleSignInAvailable()
+            ? tx("If you also have a password or a Google account for Musabaqa, you can log in with it instead.")
+            : tx("If you also have a password for Musabaqa, you can log in with it instead.")}
         </Text>
         <Button asChild colorPalette="brand">
           <NextLink href="/login" replace>

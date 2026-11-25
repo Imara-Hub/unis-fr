@@ -26,6 +26,7 @@ import { BirthDatePicker } from "@/components/BirthDatePicker";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { CompetitionBand } from "@/components/brand/CompetitionTitle";
 import { FormField } from "@/components/FormField";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { API_ORIGIN } from "@/lib/api";
 import { readApiError } from "@/lib/errors";
 import { useI18n } from "@/lib/i18n";
@@ -324,6 +325,7 @@ function Register() {
       title={tr.title}
       subtitle={tr.subtitle(MAX_AGE)}
     >
+      <OfflineBanner kind="form" />
       <Box mb={queue.items.length || queue.sent.length ? "6" : undefined}>{notice}</Box>
       <RegistrationForm
         key={round}
@@ -559,7 +561,7 @@ function RegistrationForm({
     }
     setPreparingId(true);
     try {
-      const prepared = await preparePhoto(file, { maxSide: 1600 }); // the text must stay readable
+      const prepared = await preparePhoto(file, { maxSide: 1400 }); // the text must stay readable, and light enough for 2G
       setIdDocument(prepared);
       setIdPreview(URL.createObjectURL(prepared));
     } catch {
@@ -725,12 +727,7 @@ function RegistrationForm({
           )}
         </Section>
 
-        {/* 2. The photo early: it is the step people most often get wrong. */}
-        <Section number={2} title={tr.sectionPhoto}>
-          <PhotoPicker preview={preview} preparing={preparing} error={fieldErrors.photo} onFile={onPhotoChosen} />
-        </Section>
-
-        <Section number={3} title={by && by !== "SELF" ? tr.sectionAboutParticipant : tr.sectionAbout}>
+        <Section number={2} title={by && by !== "SELF" ? tr.sectionAboutParticipant : tr.sectionAbout}>
           <FormField label={tr.fullName} error={fieldErrors.fullName} helper={tr.fullNameHelp}>
             <Input
               autoComplete="name"
@@ -783,7 +780,7 @@ function RegistrationForm({
           </FormField>
         </Section>
 
-        <Section number={4} title={by && by !== "SELF" ? tr.sectionAddressParticipant : tr.sectionAddress}>
+        <Section number={3} title={by && by !== "SELF" ? tr.sectionAddressParticipant : tr.sectionAddress}>
           <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4">
             <FormField label={tr.province} error={fieldErrors.province} helper={tr.provinceHelp}>
               <Input list="provinces" autoComplete="address-level1" value={form.province} onChange={set("province")} />
@@ -806,6 +803,11 @@ function RegistrationForm({
               <Input value={form.institutionLocation} onChange={set("institutionLocation")} />
             </FormField>
           </SimpleGrid>
+        </Section>
+
+        {/* 4 and 5. The two pictures together, at the end: the passport photo, then the ID document. */}
+        <Section number={4} title={tr.sectionPhoto}>
+          <PhotoPicker preview={preview} preparing={preparing} error={fieldErrors.photo} onFile={onPhotoChosen} />
         </Section>
 
         <Section number={5} title={tr.sectionId}>

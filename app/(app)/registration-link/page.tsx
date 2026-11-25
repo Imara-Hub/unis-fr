@@ -192,7 +192,7 @@ function LinkSections({ hasLink, noTerms }: { hasLink: boolean; noTerms: boolean
                 <Text fontSize="sm" color="fg.muted">
                   {link.isOpen
                     ? tx("Open: anyone with the link can register now. Close it when you are not expecting registrations.")
-                    : tx("Closed: the link shows “Registration is closed”. The link stays the same when you open it again.")}
+                    : tx("Closed: the link shows “Registration is closed”. Opening it again makes a new link: share the new one.")}
                 </Text>
               </Box>
               <Switch.Root

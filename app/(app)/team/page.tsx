@@ -20,6 +20,7 @@ import { confirmDialog } from "@/components/ConfirmDialog";
 import { AdminOnly } from "@/components/AdminOnly";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
+import { googleSignInAvailable } from "@/components/GoogleSignIn";
 import { PageBanner } from "@/components/PageBanner";
 import { LoginLinkActions, useLoginLinkUrl } from "@/components/LoginLinkActions";
 import { isLocalLink, LocalLinkWarning, ShareLink } from "@/components/ShareLink";
@@ -635,9 +636,9 @@ function InviteForm() {
         <form onSubmit={onSubmit} noValidate>
           <Stack gap="5">
             <Text fontSize="sm" color="fg.muted">
-              {tx(
-                "The person opens the link, fills in their name, email and password (or continues with Google), then logs in.",
-              )}
+              {googleSignInAvailable()
+                ? tx("The person opens the link, fills in their name, email and password (or continues with Google), then logs in.")
+                : tx("The person opens the link, fills in their name, email and password, then logs in.")}
             </Text>
             <RolePicker role={role} onChange={setRole} />
 

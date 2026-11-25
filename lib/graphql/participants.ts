@@ -81,6 +81,8 @@ export interface Settings {
   // Only in the SETTINGS query: is the public results page showing the results?
   resultsPublished?: boolean;
   resultsPublishedAt?: string | null;
+  reviewsPublished?: boolean;
+  reviewsPublishedAt?: string | null;
   updatedAt: string;
 }
 
@@ -202,6 +204,8 @@ export const PARTICIPANT_COUNTS: TypedDocumentNode<{ participantCounts: Counts; 
       finalistCount
       chiefJudgeId
       chiefJudgeName
+      reviewsPublished
+      reviewsPublishedAt
       updatedAt
     }
   }
@@ -409,20 +413,42 @@ export interface PublicResult {
 }
 
 // The same page: someone who registered checks whether the registration was accepted.
+// Until the admin publishes the decisions, every registration is PENDING_REVIEW (received).
 export interface PublicRegistration {
   fullName: string;
   institution: string;
   review: "PENDING_REVIEW" | "APPROVED" | "REJECTED";
   number: number | null; // the order of passage, once accepted and numbered
+  reason: string | null; // why it was refused, once published
 }
 
-export const REGISTRATION_LOOKUP: TypedDocumentNode<{ registrationLookup: PublicRegistration[] }, { name: string }> = gql`
+export const REGISTRATION_LOOKUP: TypedDocumentNode<
+  { registrationLookup: { published: boolean; matches: PublicRegistration[] } },
+  { name: string }
+> = gql`
   query RegistrationLookup($name: String!) {
     registrationLookup(name: $name) {
-      fullName
-      institution
-      review
-      number
+      published
+      matches {
+        fullName
+        institution
+        review
+        number
+        reason
+      }
+    }
+  }
+`;
+
+export const SET_REVIEWS_PUBLISHED: TypedDocumentNode<
+  { setReviewsPublished: { reviewsPublished: boolean; reviewsPublishedAt: string | null } },
+  { published: boolean }
+> = gql`
+  mutation SetReviewsPublished($published: Boolean!) {
+    setReviewsPublished(published: $published) {
+      reviewsPublished
+      reviewsPublishedAt
+      updatedAt
     }
   }
 `;

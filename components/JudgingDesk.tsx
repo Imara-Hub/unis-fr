@@ -18,7 +18,7 @@ import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { questionInfo, questionLabel } from "@/lib/quran/label";
 import { readApiError, type MarkDifference } from "@/lib/errors";
 import { ME } from "@/lib/graphql/auth";
-import { isFinalAnswer, openSheets, readSheet, removeSheet, sheetKey, waitingSheets, writeSheet } from "@/lib/sheetOutbox";
+import { isFinalAnswer, openSheets, outdated, readSheet, removeSheet, sheetKey, waitingSheets, writeSheet } from "@/lib/sheetOutbox";
 import { EMPTY_MARKS, hasMarks, MARK_TYPES, marksOnly, SAUTI, type MarkKind, type MarkType } from "@/lib/marks";
 import { MarkName } from "@/components/MarkName";
 import {
@@ -28,6 +28,7 @@ import {
   ENVELOPES,
   FINISH_QUESTION,
   JUDGING_PARTICIPANT,
+  MY_SHEET_VERSION,
   SAVE_SHEET,
   SCORING_RULES,
   STAGE,
@@ -904,7 +905,7 @@ function Sheet({
     if ((stored.round ?? "TASFIA") !== stageRound) return null;
     // The server's copy changed after these marks were made (fixed from another device or tab):
     // the newer server copy wins, the old one on this tablet is dropped.
-    if (stored.base !== undefined && initial && stored.base !== initial.updatedAt) {
+    if (outdated(stored, initial?.updatedAt ?? null)) {
       removeSheet(key);
       return null;
     }
@@ -967,10 +968,16 @@ function Sheet({
   const { focus, ref: fillRef, height: fillHeight, pull } = useFocusScreen(fill);
   const { tx } = useI18n();
   const infos = texts.map(questionInfo);
-  // The three pages load now, so switching questions on stage is instant even if the network drops.
+  // The three passages' pages load now (only those), so switching questions on stage is instant even
+  // if the network drops.
   const questionsKey = texts.join("|");
   useEffect(() => {
-    preloadPages(questionsKey.split("|").flatMap((q) => questionInfo(q)?.ref ?? []));
+    preloadPages(
+      questionsKey.split("|").flatMap((q) => {
+        const info = questionInfo(q);
+        return info ? [{ start: info.ref, end: info.end }] : [];
+      }),
+    );
   }, [questionsKey]);
   const [save, { loading }] = useMutation(SAVE_SHEET, {
     refetchQueries: [{ query: STAGE }],
@@ -1846,6 +1853,19 @@ function useSheetOutbox(onScreen: (string | null)[] | null) {
         for (const { key, participantId, sheet } of waitingSheets(judgeId)) {
           if (openSheets.has(key) || skip.current.includes(participantId)) continue; // on screen: it sends itself
           try {
+            // Same rule as a sheet opened on screen: a copy older than the server's sheet (fixed
+            // from another device since) is dropped, never sent over the newer one.
+            if (sheet.base !== undefined) {
+              const { data } = await client.query({
+                query: MY_SHEET_VERSION,
+                variables: { id: participantId, round: sheet.round ?? "TASFIA" },
+                fetchPolicy: "network-only",
+              });
+              if (outdated(sheet, data?.participant?.mySheet?.updatedAt ?? null)) {
+                removeSheet(key);
+                continue;
+              }
+            }
             await client.mutate({
               mutation: SAVE_SHEET,
               variables: {

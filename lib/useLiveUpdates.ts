@@ -44,12 +44,34 @@ export function useLiveUpdates() {
 
     // Many changes in a row → one reload, at most 300 ms after the first. Not pushed back by each
     // new change: with 4 judges marking at once the changes never stop, and the screen would wait.
+    // On a slow connection (2G) a reload takes seconds: never two at once (a change meanwhile is
+    // reloaded once the first is done), and the next one waits as long as the last one took, so
+    // the line stays free for the judges' own saves.
+    let reloading = false;
+    let again = false; // a change came in during the reload
+    let lastTook = 0;
     const refresh = () => {
+      if (reloading) {
+        again = true;
+        return;
+      }
       if (timer !== undefined) return;
       timer = setTimeout(() => {
         timer = undefined;
-        void client.refetchQueries({ include: "active" });
-      }, 300);
+        reloading = true;
+        const started = Date.now();
+        void client
+          .refetchQueries({ include: "active" })
+          .catch(() => undefined)
+          .finally(() => {
+            reloading = false;
+            lastTook = Date.now() - started;
+            if (again && !cancelled) {
+              again = false;
+              refresh();
+            }
+          });
+      }, Math.max(300, Math.min(lastTook, 10_000)));
     };
 
     // No stream: reload on a timer so nobody has to pull to refresh. Stops once the stream is back.

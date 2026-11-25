@@ -167,7 +167,8 @@ function IdDocumentCard({ path }: { path: string }) {
           </Link>
         </Flex>
         <Image
-          src={authedUrl(path)}
+          // A lighter copy to read on screen; "Open full size" above gives the original.
+          src={authedUrl(path, 800)}
           alt={tx("ID card or passport")}
           maxW="md"
           w="full"

@@ -22,7 +22,8 @@ export default function CheckRegistrationPage() {
   const [name, setName] = useState("");
   const [lookup, { data, loading, error, called }] = useLazyQuery(REGISTRATION_LOOKUP, { fetchPolicy: "network-only" });
   const err = error ? apiError(readApiError(error)) : null;
-  const matches = data?.registrationLookup;
+  const matches = data?.registrationLookup.matches;
+  const published = data?.registrationLookup.published ?? false;
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -55,7 +56,7 @@ export default function CheckRegistrationPage() {
             ) : (
               <Stack gap="3">
                 {matches.map((m, i) => (
-                  <RegistrationCard key={i} registration={m} />
+                  <RegistrationCard key={i} registration={m} published={published} />
                 ))}
               </Stack>
             )}
@@ -66,7 +67,7 @@ export default function CheckRegistrationPage() {
   );
 }
 
-function RegistrationCard({ registration: r }: { registration: PublicRegistration }) {
+function RegistrationCard({ registration: r, published }: { registration: PublicRegistration; published: boolean }) {
   const tr = useI18n().t.registration;
   const tone = r.review === "APPROVED" ? "green" : r.review === "REJECTED" ? "red" : "orange";
   return (
@@ -86,8 +87,27 @@ function RegistrationCard({ registration: r }: { registration: PublicRegistratio
           </Badge>
         </Flex>
         <Text fontSize="sm" color="fg.muted">
-          {r.review === "APPROVED" ? tr.approvedHelp : r.review === "REJECTED" ? tr.rejectedHelp : tr.pendingHelp}
+          {r.review === "APPROVED"
+            ? tr.approvedHelp
+            : r.review === "REJECTED"
+              ? r.reason
+                ? tr.rejectedWithReason
+                : tr.rejectedHelp
+              : published
+                ? tr.pendingHelp
+                : tr.receivedHelp}
         </Text>
+        {/* The reason, as the organisers wrote it. */}
+        {r.review === "REJECTED" && r.reason && (
+          <Box bg="red.50" borderWidth="1px" borderColor="red.100" rounded="md" px="3" py="2">
+            <Text fontSize="xs" fontWeight="semibold" color="red.700" textTransform="uppercase" letterSpacing="0.05em">
+              {tr.reasonLabel}
+            </Text>
+            <Text fontSize="sm" color="red.900" whiteSpace="pre-wrap">
+              {r.reason}
+            </Text>
+          </Box>
+        )}
         {r.number !== null && (
           <Text fontSize="sm" fontWeight="semibold" color="brand.900">
             {tr.number(r.number)}

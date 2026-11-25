@@ -10,6 +10,7 @@ import { Logo as LogoBadge } from "@/components/brand/Logo";
 import { StarLattice } from "@/components/brand/Octagram";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { SeasonBanner, SeasonSwitcher } from "@/components/Seasons";
 import { SEASONS } from "@/lib/graphql/seasons";
 import { getViewedSeason, setViewedSeason } from "@/lib/season";
@@ -476,6 +477,8 @@ function SidebarShell({
           <InstallPrompt />
           {/* A past year open: said above every page, with the way back. */}
           <SeasonBanner />
+          {/* No connection: the judging desk shows the answers kept on the device. */}
+          <OfflineBanner kind={user.role === "JUDGE" ? "desk" : "page"} />
           {/* Each page fades in when opened (the key restarts the animation on navigation). */}
           <Box key={pathname} animation="fade-in 0.3s ease-out" _motionReduce={{ animation: "none" }}>
             {children}

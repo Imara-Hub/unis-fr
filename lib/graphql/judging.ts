@@ -264,6 +264,23 @@ export const REOPEN_SHEET: TypedDocumentNode<{ reopenSheet: { id: string; submit
   }
 `;
 
+// When the judge's own sheet last changed on the server: a copy waiting on the tablet older than
+// that is not sent (see lib/sheetOutbox).
+export const MY_SHEET_VERSION: TypedDocumentNode<
+  { participant: { id: string; mySheet: { id: string; updatedAt: string } | null } | null },
+  { id: string; round: Round }
+> = gql`
+  query MySheetVersion($id: ID!, $round: EnvelopeRound) {
+    participant(id: $id) {
+      id
+      mySheet(round: $round) {
+        id
+        updatedAt
+      }
+    }
+  }
+`;
+
 export const SAVE_SHEET: TypedDocumentNode<
   { saveSheet: JudgeSheet },
   { input: { participantId: string; questions: Marks[]; sauti: number | null; presence: boolean | null; submit: boolean; round?: Round } }

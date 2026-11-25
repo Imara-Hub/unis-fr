@@ -31,7 +31,7 @@ const MESSAGES: Record<string, string> = {
   ROUND_NOT_OVER: "The tasfia is not over: someone is on stage or still waits for the judges' sheets.",
   NO_FINALISTS: "Nobody passed the tasfia, so there is no final.",
   ROUND_CHANGED: "This sheet was marked in the tasfia, but the final is on stage now: it was not saved.",
-  RESULTS_PUBLISHED: "The results are published: unpublish them first to change a score.",
+  RESULTS_PUBLISHED: "The results are published: nothing can change until the admin unpublishes them.",
   NOT_CHIEF_JUDGE: "Only the chief judge calls the participants.",
   SEASON_CLOSED: "This is a past year: it can only be looked at. Go back to the current year to make changes.",
   VALIDATION_FAILED: "Please check the highlighted fields.",

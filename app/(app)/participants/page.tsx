@@ -578,7 +578,7 @@ function PhotoGrid({ participants }: { participants: ParticipantRow[] }) {
         >
           <NextLink href={`/participants/${p.id}`}>
             <Box position="relative" bg="bg.muted" aspectRatio={3 / 4}>
-              <Image src={authedUrl(p.photoUrl)} alt="" w="full" h="full" objectFit="cover" loading="lazy" />
+              <Image src={authedUrl(p.photoUrl, 320)} alt="" w="full" h="full" objectFit="cover" loading="lazy" />
               <Box position="absolute" top="2" right="2">
                 <StatusBadge status={p.status} finalist={p.finalist} />
               </Box>

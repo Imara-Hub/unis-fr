@@ -11,6 +11,7 @@ import { FormField } from "@/components/FormField";
 import { toaster } from "@/components/Toaster";
 import { readApiError } from "@/lib/errors";
 import { SEASONS, START_SEASON, type Season } from "@/lib/graphql/seasons";
+import { ORG_ACCESS_KEY } from "@/lib/graphql/staff";
 import { useI18n } from "@/lib/i18n";
 import { setViewedSeason, useViewedSeason } from "@/lib/season";
 
@@ -234,9 +235,36 @@ function StartYearDialog({ current, onClose }: { current: Season; onClose: () =>
     setError(null);
     try {
       await start({ variables: { input: { year: next, name: name.trim() || null } } });
+      // A new year has a new entry key (when the app is closed to the public): this browser opens
+      // it at once, before any page reloads, so the admin is not locked out of their own app.
+      // If that fails, the new link is shown to copy: without it this browser could not get back in.
+      let missed: string | null = null;
+      const asked = await client.query({ query: ORG_ACCESS_KEY, fetchPolicy: "network-only" }).catch(() => null);
+      const key = asked?.data?.orgAccessKey ?? null;
+      if (!asked) missed = tx("Settings → Access to the app");
+      else if (key) {
+        const url = `${window.location.origin}/enter/${encodeURIComponent(key)}`;
+        const res = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" }).catch(() => null);
+        if (!res?.ok) missed = url;
+      }
       setViewedSeason(null);
       await client.resetStore().catch(() => undefined);
-      toaster.create({ type: "success", title: tx("{year} has started", { year: next }) });
+      toaster.create({
+        type: "success",
+        title: tx("{year} has started", { year: next }),
+        description: key
+          ? tx("The entry link and the registration link are new: share them again.")
+          : tx("The registration link is new: share it again."),
+      });
+      if (missed) {
+        toaster.create({
+          type: "warning",
+          duration: Infinity,
+          closable: true,
+          title: tx("This browser could not open the new entry link by itself. Copy it now and open it on this device:"),
+          description: missed,
+        });
+      }
       onClose();
     } catch (err) {
       setError(apiError(readApiError(err)).message);
@@ -258,7 +286,7 @@ function StartYearDialog({ current, onClose }: { current: Season; onClose: () =>
                 <Stack gap="1.5" fontSize="sm" color="fg.muted">
                   <Text>{tx("{year} is closed and kept as it is: its participants, sheets and ranking stay readable, with the rules it was judged by.", { year: current.year })}</Text>
                   <Text>{tx("The new year starts with no participants, no envelopes, nobody on stage and the results not published.")}</Text>
-                  <Text>{tx("The team, the pass mark, the terms and the registration link stay the same.")}</Text>
+                  <Text>{tx("The team, the pass mark and the terms stay the same. The registration link changes, and so does the entry link if the app is closed to the public: share the new ones.")}</Text>
                 </Stack>
                 <FormField label={tx("Year")} error={year && !valid ? tx("A year after {year}", { year: current.year }) : undefined}>
                   <Input inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))} />

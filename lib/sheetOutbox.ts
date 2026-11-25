@@ -75,6 +75,17 @@ export function waitingSheets(judgeId: string) {
   return found;
 }
 
+// Is this copy older than the sheet on the server (`server`: its updatedAt, null if none)? Yes when
+// the server sheet changed since the copy was made (`base`) and after the copy's own last change:
+// someone fixed it from another device or tab, and the newer server copy wins. A save from this
+// tablet that went in although its answer was lost also moves the server on, but before the copy's
+// last change: that copy (maybe a Submit pressed since) is kept. Copies from older versions have no
+// base: kept.
+export function outdated(sheet: StoredSheet, server: string | null) {
+  if (sheet.base === undefined || server === null || server === sheet.base) return false;
+  return Date.parse(server) > sheet.at;
+}
+
 // Answers that settle a waiting sheet for good: it is in (SHEET_LOCKED: already submitted), or it
 // can never go in (participant deleted, panel complete, invalid marks). Anything else (login expired,
 // too many requests, server error, no connection) leaves the sheet on the tablet to send again later.
