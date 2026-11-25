@@ -21,6 +21,7 @@ import { ErrorAlert } from "@/components/ErrorAlert";
 import { FormField } from "@/components/FormField";
 import { MIN_PASSWORD_LENGTH, PasswordStrength } from "@/components/PasswordInput";
 import { PageBanner } from "@/components/PageBanner";
+import { PublishReviews } from "@/components/PublishReviews";
 import { CompetitionYears } from "@/components/Seasons";
 import { YearLook } from "@/components/YearLook";
 import { ShareLink } from "@/components/ShareLink";
@@ -36,11 +37,11 @@ import { SET_RESULTS_PUBLISHED, SETTINGS, UPDATE_SETTINGS, type Settings } from 
 import { preparePhoto } from "@/lib/register";
 import { ORG_ACCESS_KEY, REGENERATE_ACCESS_KEY, ROLE_LABELS } from "@/lib/graphql/staff";
 import type { AppKey } from "@/lib/i18n";
-import { CalendarDays, Camera, Check, KeyRound, Lock, Trophy, UserRound, Users } from "lucide-react";
+import { CalendarDays, Camera, Check, KeyRound, Lock, SearchCheck, Trophy, UserRound, Users } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { MARK_TYPES } from "@/lib/marks";
 
-type Section = "profile" | "password" | "competition" | "years" | "team" | "access";
+type Section = "profile" | "password" | "competition" | "years" | "check" | "team" | "access";
 
 const SECTIONS: { key: Section; label: AppKey; hint: AppKey; adminOnly: boolean; icon: ReactNode }[] = [
   { key: "profile", label: "My profile", hint: "Picture and name", adminOnly: false, icon: <UserIcon /> },
@@ -48,6 +49,7 @@ const SECTIONS: { key: Section; label: AppKey; hint: AppKey; adminOnly: boolean;
   { key: "password", label: "Password", hint: "Change your password", adminOnly: true, icon: <LockIcon /> },
   { key: "competition", label: "Competition", hint: "Judges and pass mark", adminOnly: true, icon: <TrophyIcon /> },
   { key: "years", label: "Competition years", hint: "Past years, start a new one", adminOnly: true, icon: <CalendarDays size={18} aria-hidden /> },
+  { key: "check", label: "Registration check", hint: "Accepted or rejected, public", adminOnly: true, icon: <SearchCheck size={18} aria-hidden /> },
   { key: "team", label: "Team members", hint: "Roles, names, access", adminOnly: true, icon: <TeamIcon /> },
   { key: "access", label: "Access to the app", hint: "Entry link for owners", adminOnly: true, icon: <KeyIcon /> },
 ];
@@ -159,6 +161,14 @@ export default function SettingsPage() {
                 <YearLook />
               </SectionCard>
             </Box>
+          )}
+          {current === "check" && (
+            <SectionCard
+              title={tx("Registration check")}
+              description={tx("The public page where people type their name to see if their registration was accepted, or why it was rejected.")}
+            >
+              <PublishReviews framed={false} />
+            </SectionCard>
           )}
           {current === "team" && <TeamSection />}
           {current === "access" && <AccessSection />}

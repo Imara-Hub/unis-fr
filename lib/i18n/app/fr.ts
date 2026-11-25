@@ -985,4 +985,9 @@ export const appFr = {
   "People who type their name on the check page see if they were accepted, and why when they were rejected.": "Les personnes qui tapent leur nom sur la page de vérification voient si elles ont été acceptées, et pourquoi si elles ont été refusées.",
   "Until you publish, people who check their registration only see that it arrived.": "Tant que vous ne publiez pas, les personnes qui vérifient leur inscription voient seulement qu’elle est arrivée.",
   "Check whether your Musabaqa registration was accepted with this link:": "Vérifiez si votre inscription à la Musabaqa a été acceptée avec ce lien :",
+  "Registration check": "Vérification des inscriptions",
+  "Accepted or rejected, public": "Acceptée ou refusée, en public",
+  "The public page where people type their name to see if their registration was accepted, or why it was rejected.": "La page publique où chacun tape son nom pour savoir si son inscription a été acceptée, ou pourquoi elle a été refusée.",
+  "A new version of the app is ready.": "Une nouvelle version de l’application est prête.",
+  "Update": "Mettre à jour",
 };

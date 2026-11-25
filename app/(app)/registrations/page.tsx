@@ -2,14 +2,11 @@
 
 import { useMutation, useQuery } from "@apollo/client/react";
 import { Badge, Box, Button, Card, Flex, Input, InputGroup, Skeleton, Stack, Text } from "@chakra-ui/react";
-import { EyeOff, FileText, ListChecks, Megaphone, Search } from "lucide-react";
+import { FileText, ListChecks, Search } from "lucide-react";
 import NextLink from "next/link";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import { AdminOnly } from "@/components/AdminOnly";
-import { confirmDialog } from "@/components/ConfirmDialog";
-import { ShareLink } from "@/components/ShareLink";
-import { toaster } from "@/components/Toaster";
-import { GREETING } from "@/lib/greeting";
+import { PublishReviews } from "@/components/PublishReviews";
 import { Delayed } from "@/components/Delayed";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { NumberTag } from "@/components/NumberTag";
@@ -18,7 +15,7 @@ import { ParticipantPhoto } from "@/components/ParticipantPhoto";
 import { ReviewBadge } from "@/components/StatusBadge";
 import { ageOf, formatDateTime } from "@/lib/dates";
 import { readApiError } from "@/lib/errors";
-import { PARTICIPANT_COUNTS, PARTICIPANTS, SET_REVIEWS_PUBLISHED, type ParticipantRow, type ReviewStatus } from "@/lib/graphql/participants";
+import { PARTICIPANT_COUNTS, PARTICIPANTS, type ParticipantRow, type ReviewStatus } from "@/lib/graphql/participants";
 import type { AppKey } from "@/lib/i18n";
 import { formatPhone, reachPhone } from "@/lib/phone";
 import { useRegistrar } from "@/components/Registrar";
@@ -79,7 +76,7 @@ function Registrations() {
         description={tx("Check each registration against the terms and conditions, then approve or reject it. Only approved people appear for the judges and staff and can be called on stage.")}
       />
 
-      {counts.data && <PublishReviews published={Boolean(counts.data.settings.reviewsPublished)} waiting={c?.awaitingReview ?? 0} />}
+      <PublishReviews />
 
       {/* The quickest way through the queue: each form in turn, oldest first, the next opens after a decision. */}
       {firstWaiting && (
@@ -201,64 +198,6 @@ function Registrations() {
         )}
       </Card.Root>
     </>
-  );
-}
-
-const noSubscribe = () => () => {};
-
-// The public check page (/check-registration): "received, being checked" for everyone until the
-// admin publishes the decisions; then accepted (with the order of passage) or refused with the
-// reason written when rejecting. Decisions made after publishing show at once.
-function PublishReviews({ published, waiting }: { published: boolean; waiting: number }) {
-  const { tx } = useI18n();
-  const [setPublished, { loading }] = useMutation(SET_REVIEWS_PUBLISHED, { refetchQueries: [PARTICIPANT_COUNTS] });
-  const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
-
-  async function toggle() {
-    const ok = await confirmDialog({
-      title: published ? tx("Hide the decisions?") : tx("Publish the decisions?"),
-      message: published
-        ? tx("The check page will say “received, being checked” for everyone again.")
-        : waiting > 0
-          ? tx("{n} registrations are still waiting for review: they will show as “being checked”. Anyone who types a name will see whether it was accepted, and the reason when it was rejected.", { n: waiting })
-          : tx("Anyone who types a name will see whether it was accepted, and the reason when it was rejected."),
-      confirmLabel: published ? tx("Hide the decisions") : tx("Publish the decisions"),
-      destructive: published,
-    });
-    if (!ok) return;
-    const res = await setPublished({ variables: { published: !published } }).catch(() => null);
-    toaster.create(
-      res?.data
-        ? { type: "success", title: published ? tx("Decisions hidden") : tx("Decisions published") }
-        : { type: "error", title: tx("Could not save. Check the connection and try again.") },
-    );
-  }
-
-  return (
-    <Card.Root mb="4">
-      <Card.Body gap="4">
-        <Flex justify="space-between" align={{ base: "flex-start", md: "center" }} gap="4" direction={{ base: "column", md: "row" }}>
-          <Box>
-            <Flex align="center" gap="2" wrap="wrap">
-              <Text fontWeight="semibold" color="brand.900">
-                {tx("Registration decisions")}
-              </Text>
-              <Badge colorPalette={published ? "green" : "gray"}>{published ? tx("Published") : tx("Not published")}</Badge>
-            </Flex>
-            <Text fontSize="sm" color="fg.muted">
-              {published
-                ? tx("People who type their name on the check page see if they were accepted, and why when they were rejected.")
-                : tx("Until you publish, people who check their registration only see that it arrived.")}
-            </Text>
-          </Box>
-          <Button colorPalette={published ? "red" : "brand"} variant={published ? "outline" : "solid"} loading={loading} onClick={toggle} flexShrink={0}>
-            {published ? <EyeOff size={16} aria-hidden /> : <Megaphone size={16} aria-hidden />}
-            {published ? tx("Hide the decisions") : tx("Publish the decisions")}
-          </Button>
-        </Flex>
-        <ShareLink url={`${origin}/check-registration`} message={`${GREETING}! ${tx("Check whether your Musabaqa registration was accepted with this link:")}`} />
-      </Card.Body>
-    </Card.Root>
   );
 }
 

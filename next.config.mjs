@@ -7,8 +7,14 @@ const ownAddresses = Object.values(networkInterfaces())
   .filter((a) => a && a.family === "IPv4" && !a.internal)
   .map((a) => a.address);
 
+// This build's version: the commit when the host gives it (Vercel, Render), else the build time.
+// Baked into the app; /version.json answers with the live one, and an open page that is older
+// offers "Update" (components/UpdateBanner.tsx).
+const APP_VERSION = process.env.VERCEL_GIT_COMMIT_SHA || process.env.RENDER_GIT_COMMIT || process.env.APP_VERSION || new Date().toISOString();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: { APP_VERSION },
   allowedDevOrigins: ownAddresses,
   experimental: {
     agentFeedback: true,

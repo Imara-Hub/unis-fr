@@ -986,4 +986,9 @@ export const appSw: Record<AppKey, string> = {
   "People who type their name on the check page see if they were accepted, and why when they were rejected.": "Wanaoandika jina lao kwenye ukurasa wa kukagua wanaona kama walikubaliwa, na sababu walipokataliwa.",
   "Until you publish, people who check their registration only see that it arrived.": "Hadi utakapotangaza, wanaokagua usajili wao wanaona tu kwamba umefika.",
   "Check whether your Musabaqa registration was accepted with this link:": "Kagua kama usajili wako wa Musabaqa ulikubaliwa kwa kiungo hiki:",
+  "Registration check": "Kuangalia usajili",
+  "Accepted or rejected, public": "Umekubaliwa au umekataliwa, hadharani",
+  "The public page where people type their name to see if their registration was accepted, or why it was rejected.": "Ukurasa wa umma ambapo watu huandika majina yao kuona kama usajili wao ulikubaliwa, au kwa nini ulikataliwa.",
+  "A new version of the app is ready.": "Toleo jipya la programu liko tayari.",
+  "Update": "Sasisha",
 };

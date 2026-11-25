@@ -986,4 +986,9 @@ export const appRn: Record<AppKey, string> = {
   "People who type their name on the check page see if they were accepted, and why when they were rejected.": "Abanditse izina ryabo ku rupapuro rwo kuraba babona nimba bemewe, n’igituma nimba banswe.",
   "Until you publish, people who check their registration only see that it arrived.": "Gushika ushize ahabona, abaraba ukwiyandikisha kwabo babona gusa ko kwashitse.",
   "Check whether your Musabaqa registration was accepted with this link:": "Raba nimba ukwiyandikisha kwawe muri Musabaqa kwemewe ukoresheje uyu murongo:",
+  "Registration check": "Kuraba ukwiyandikisha",
+  "Accepted or rejected, public": "Yemewe canke yanswe, ku mugaragaro",
+  "The public page where people type their name to see if their registration was accepted, or why it was rejected.": "Urupapuro rwa bose aho umuntu yandika izina ryiwe kugira amenye ko ukwiyandikisha kwiwe kwemewe, canke igituma kwanswe.",
+  "A new version of the app is ready.": "Verisiyo nshasha y’iyi porogarama iriteguye.",
+  "Update": "Shiramwo ivy’ubu",
 };

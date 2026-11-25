@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 import { ConfirmDialogHost } from "@/components/ConfirmDialog";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { Toaster } from "@/components/Toaster";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { createApolloClient } from "@/lib/apollo";
 import { LanguageProvider } from "@/lib/i18n";
 import { system } from "@/lib/theme";
@@ -22,6 +23,7 @@ export function Providers({ children }: { children: ReactNode }) {
           <LanguageProvider>
             {children}
             <ConfirmDialogHost />
+            <UpdateBanner />
           </LanguageProvider>
         </ApolloProvider>
         <Toaster />
